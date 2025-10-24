@@ -1,6 +1,4 @@
-# 1. Sửa lỗi Định danh người dùng (chỉ cần làm 1 lần)
-git config --global user.email "natvn313@gmail.com"
-git config --global user.name "AnhTuan212"
+
 
 # 2. Xóa và Thêm lại remote
 git remote remove origin
