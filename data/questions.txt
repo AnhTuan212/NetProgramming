@@ -1,0 +1,2 @@
+Q1|What is 2+2?|A)3|B)4|C)5|D)6|B
+Q2|Capital of France?|A)Berlin|B)London|C)Paris|D)Rome|C
