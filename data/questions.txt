@@ -1,2 +1,5 @@
-Q1|What is 2+2?|A)3|B)4|C)5|D)6|B
-Q2|Capital of France?|A)Berlin|B)London|C)Paris|D)Rome|C
+1|What is the capital of France?|A) Berlin|B) Madrid|C) Paris|D) Rome|C|Geography|Easy
+2|Which data type is used to create a variable that should store text in C?|A) int|B) float|C) char|D) string|C|Programming|Easy
+3|Which protocol is used to send email?|A) HTTP|B) SMTP|C) FTP|D) SSH|B|Networking|Medium
+4|Which keyword is used to define a function in C?|A) func|B) def|C) void|D) function|C|Programming|Medium
+5|What is the value of 5 + 3 * 2 in C?|A) 11|B) 16|C) 13|D) 10|A|Programming|Easy

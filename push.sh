@@ -8,7 +8,7 @@ git remote add origin https://github.com/AnhTuan212/NetProgramming.git
 
 # 3. Đảm bảo tất cả tệp đã được thêm và commit
 git add .
-git commit -m "Updated files for push"
+git commit -m "Updated files for change to c"
 
 # 4. Đổi tên branch thành 'main' (nếu cần)
 git branch -M main

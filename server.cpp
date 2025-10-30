@@ -1,481 +1,413 @@
-// ==============================
-// server.cpp — main server
-// - Start test returns all questions; client answers inline and sends SUBMIT with answersCSV
-// - Rooms persisted to data/rooms.txt with participants list
-// - Results appended to data/results.txt
-// ==============================
-
-#include <iostream>
-#include <string>
-#include <thread>
-#include <mutex>
-#include <vector>
-#include <map>
-#include <sstream>
-#include <netinet/in.h>
+// ========================================
+// server.cpp — Online Test Server (Fixed)
+// ========================================
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <fstream>
-#include <filesystem>
-#include <algorithm>
-#include <ctime>
-#include "nlohmann/json.hpp"
-#include "logger.h"
+#include <pthread.h>
+#include <ctype.h>
 
-using json = nlohmann::json;
-using namespace std;
+// --- Removed custom .h includes ---
 
-struct UserSession {
-    string username;
-    bool loggedIn;
-    int socket;
-};
+#define PORT 9000
+#define MAX_CLIENTS 50
+#define MAX_ROOMS 100
+#define MAX_PARTICIPANTS 50
+#define MAX_QUESTIONS_PER_ROOM 50
+#define BUF_SIZE 4096
+#define MAX_Q 100 // Added definition
 
-struct Question {
-    string question;
-    vector<string> options; // size 4
-    char correct; // 'A','B','C','D'
-};
+// ======================= Structures =======================
 
-struct TestRoom {
-    string name;
-    string owner;
+// Manually added QItem struct definition
+typedef struct {
+    int id;
+    char text[256];
+    char A[128];
+    char B[128];
+    char C[128];
+    char D[128];
+    char correct; // 'A'..'D'
+    char topic[64];
+    char difficulty[32];
+} QItem;
+
+typedef struct {
+    char username[64];
+    int score;
+    char answers[MAX_QUESTIONS_PER_ROOM];
+} Participant;
+
+typedef struct {
+    char name[64];
+    char owner[64];
     int numQuestions;
-    int duration; // seconds
-    vector<Question> questions;
-    map<string, int> scores; // username -> score (if submitted)
-    map<string, vector<char>> answers; // username -> answers (size numQuestions)
-    vector<string> participants; // list of usernames
-    bool started = false;
-};
+    int duration;
+    QItem questions[MAX_QUESTIONS_PER_ROOM]; // Using QItem
+    Participant participants[MAX_PARTICIPANTS];
+    int participantCount;
+    int started;
+} Room;
 
-// Globals
-map<int, UserSession> clients;
-map<string, TestRoom> rooms;
-mutex mtx;
-string dataDir = "data";
+typedef struct {
+    int sock;
+    char username[64];
+    int loggedIn;
+    char role[32];
+} Client;
 
-void appendResultToFile(const string &room, const string &user, int score) {
-    filesystem::create_directories(dataDir);
-    string path = dataDir + "/results.txt";
-    ofstream fout(path, ios::app);
-    if (!fout.is_open()) return;
-    fout << room << "," << user << "," << score << "\n";
-    fout.close();
+// ======================= External Function Prototypes =======================
+// Manually added prototypes from other .cpp files
+
+// From logger.cpp
+void writeLog(const char *event);
+
+// From user_manager.cpp
+int register_user(const char *username, const char *password);
+int validate_user(const char *username, const char *password, char *role_out);
+
+// From question_bank.cpp
+int loadQuestionsTxt(const char *filename, QItem questions[], int maxQ, const char* topic, const char* diff);
+
+
+// ======================= Globals =======================
+Room rooms[MAX_ROOMS];
+int roomCount = 0;
+QItem practiceQuestions[MAX_Q]; // Global bank for practice mode
+int practiceQuestionCount = 0;
+pthread_mutex_t lock;
+
+// ======================= Utilities =======================
+void trim_newline(char *s) {
+    char *p = strchr(s, '\n');
+    if (p) *p = 0;
+    p = strchr(s, '\r');
+    if (p) *p = 0;
 }
 
-vector<Question> loadQuestionsFromFile(int numQ) {
-    vector<Question> out;
-    filesystem::create_directories(dataDir);
-    string path = dataDir + "/questions.txt";
-    ifstream fin(path);
-    if (!fin.is_open()) return out;
-    string line;
-    vector<string> allLines;
-    while (getline(fin, line)) {
-        if (!line.empty()) allLines.push_back(line);
+void send_msg(int sock, const char *msg) {
+    send(sock, msg, strlen(msg), 0);
+}
+
+// ======================= Room Management =======================
+Room* find_room(const char *name) {
+    for (int i = 0; i < roomCount; i++) {
+        if (strcmp(rooms[i].name, name) == 0)
+            return &rooms[i];
     }
-    fin.close();
-    for (size_t i = 0; i < allLines.size() && (int)out.size() < numQ; ++i) {
-        string ln = allLines[i];
-        vector<string> parts;
-        string cur;
-        stringstream ss(ln);
-        while (getline(ss, cur, '|')) parts.push_back(cur);
-        if (parts.size() < 7) continue;
-        Question q;
-        q.question = parts[1];
-        auto stripLabel = [](const string &s)->string {
-            if (s.size() > 3 && s[1] == ')') return s.substr(3);
-            return s;
-        };
-        q.options.push_back(stripLabel(parts[2]));
-        q.options.push_back(stripLabel(parts[3]));
-        q.options.push_back(stripLabel(parts[4]));
-        q.options.push_back(stripLabel(parts[5]));
-        q.correct = (!parts[6].empty()) ? parts[6][0] : 'A';
-        out.push_back(q);
+    return NULL;
+}
+
+Participant* find_participant(Room *r, const char *user) {
+    for (int i = 0; i < r->participantCount; i++) {
+        if (strcmp(r->participants[i].username, user) == 0)
+            return &r->participants[i];
     }
-    return out;
+    return NULL;
 }
 
-// Persist all rooms to data/rooms.txt in format:
-// room_name,owner,num_questions,duration,member1;member2;member3
-void persistRoomsToFile() {
-    filesystem::create_directories(dataDir);
-    string path = dataDir + "/rooms.txt";
-    ofstream fout(path, ios::trunc);
-    if (!fout.is_open()) return;
-    for (auto &kv : rooms) {
-        const TestRoom &r = kv.second;
-        fout << r.name << "," << r.owner << "," << r.numQuestions << "," << r.duration << ",";
-        for (size_t i = 0; i < r.participants.size(); ++i) {
-            if (i) fout << ";";
-            fout << r.participants[i];
-        }
-        fout << "\n";
-    }
-    fout.close();
-}
+// ======================= Command Handling =======================
+void* handle_client(void *arg) {
+    Client *cli = (Client*)arg;
+    char buffer[BUF_SIZE];
+    char log_msg[512];
 
-void loadRoomsFromFile() {
-    filesystem::create_directories(dataDir);
-    string path = dataDir + "/rooms.txt";
-    ifstream fin(path);
-    if (!fin.is_open()) return;
-    string line;
-    while (getline(fin, line)) {
-        if (line.empty()) continue;
-        // room_name,owner,num_questions,duration,member1;member2
-        stringstream ss(line);
-        string name, owner, numStr, durStr, membersStr;
-        if (!getline(ss, name, ',')) continue;
-        if (!getline(ss, owner, ',')) continue;
-        if (!getline(ss, numStr, ',')) continue;
-        if (!getline(ss, durStr, ',')) continue;
-        getline(ss, membersStr); // remainder
-        try {
-            int numQ = stoi(numStr);
-            int dur = stoi(durStr);
-            TestRoom r;
-            r.name = name;
-            r.owner = owner;
-            r.numQuestions = numQ;
-            r.duration = dur;
-            r.questions = loadQuestionsFromFile(numQ);
-            r.participants.clear();
-            if (!membersStr.empty()) {
-                stringstream ms(membersStr);
-                string member;
-                while (getline(ms, member, ';')) {
-                    if (!member.empty()) {
-                        r.participants.push_back(member);
-                        r.scores[member] = 0;
-                        r.answers[member].resize(numQ);
-                    }
-                }
-            }
-            rooms[name] = r;
-        } catch (...) { continue; }
-    }
-    fin.close();
-}
-
-// user validation: data/users.txt format username,password,role OR whitespace separated
-bool validateUser(const string &username, const string &password) {
-    filesystem::create_directories(dataDir);
-    string path = dataDir + "/users.txt";
-    ifstream fin(path);
-    if (!fin.is_open()) return false;
-    string line;
-    while (getline(fin, line)) {
-        if (line.empty()) continue;
-        if (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
-        string u, p, role;
-        if (line.find(',') != string::npos) {
-            stringstream ss(line);
-            getline(ss, u, ',');
-            getline(ss, p, ',');
-            getline(ss, role);
-        } else {
-            stringstream ss(line);
-            ss >> u >> p;
-        }
-        // trim
-        auto trim = [](string s)->string {
-            s.erase(s.begin(), find_if(s.begin(), s.end(), [](unsigned char ch){ return !isspace(ch); }));
-            s.erase(find_if(s.rbegin(), s.rend(), [](unsigned char ch){ return !isspace(ch); }).base(), s.end());
-            return s;
-        };
-        u = trim(u); p = trim(p);
-        if (u == username && p == password) {
-            fin.close();
-            return true;
-        }
-    }
-    fin.close();
-    return false;
-}
-
-void sendJSON(int sock, const json &j) {
-    string msg = j.dump();
-    send(sock, msg.c_str(), msg.size(), 0);
-}
-
-void handleClient(int clientSock) {
-    char buffer[4096];
-    string username;
-
-    json welcome;
-    welcome["status"] = "info";
-    welcome["message"] = "Welcome to Online Testing Server!";
-    sendJSON(clientSock, welcome);
-    writeLog("CLIENT_CONNECTED");
-
-    while (true) {
+    while (1) {
         memset(buffer, 0, sizeof(buffer));
-        int bytes = recv(clientSock, buffer, sizeof(buffer)-1, 0);
+        int bytes = recv(cli->sock, buffer, sizeof(buffer) - 1, 0);
         if (bytes <= 0) break;
 
-        string input(buffer, bytes);
-        while (!input.empty() && (input.back() == '\n' || input.back() == '\r')) input.pop_back();
+        trim_newline(buffer);
+        char cmd[32];
+        sscanf(buffer, "%31s", cmd);
 
-        stringstream ss(input);
-        string cmd;
-        ss >> cmd;
+        pthread_mutex_lock(&lock);
 
-        lock_guard<mutex> lock(mtx);
-
-        if (cmd == "LOGIN") {
-            string uname, pass;
-            ss >> uname >> pass;
-            json resp;
-            if (validateUser(uname, pass)) {
-                clients[clientSock] = {uname, true, clientSock};
-                username = uname;
-                resp["status"] = "success";
-                resp["user"] = uname;
-                resp["message"] = "Login success.";
-                writeLog(uname + " LOGIN");
-            } else {
-                resp["status"] = "fail";
-                resp["message"] = "Invalid username or password.";
-                writeLog("FAILED_LOGIN:" + uname);
-            }
-            sendJSON(clientSock, resp);
-        }
-
-        else if (cmd == "CREATE") {
-            string roomName;
-            int numQ = 0, dur = 0;
-            ss >> roomName >> numQ >> dur;
-            json resp;
-            if (rooms.count(roomName)) {
-                resp["status"] = "fail";
-                resp["message"] = "Room already exists.";
-            } else {
-                TestRoom room;
-                room.name = roomName;
-                room.owner = username;
-                room.numQuestions = numQ;
-                room.duration = dur;
-                room.questions = loadQuestionsFromFile(numQ);
-                rooms[roomName] = room;
-                persistRoomsToFile();
-                resp["status"] = "success";
-                resp["message"] = "Room created successfully.";
-                resp["room"] = roomName;
-                writeLog(username + " CREATED_ROOM:" + roomName);
-            }
-            sendJSON(clientSock, resp);
-        }
-
-        else if (cmd == "LIST") {
-            json resp;
-            resp["status"] = "ok";
-            for (auto &[name, room] : rooms) {
-                json r;
-                r["name"] = name;
-                r["questions"] = room.numQuestions;
-                r["duration"] = room.duration;
-                r["participants"] = (int)room.participants.size();
-                resp["rooms"].push_back(r);
-            }
-            sendJSON(clientSock, resp);
-        }
-
-        else if (cmd == "JOIN") {
-            string roomName, user;
-            ss >> roomName >> user; // client sends JOIN room username
-            json resp;
-            if (rooms.count(roomName)) {
-                TestRoom &rm = rooms[roomName];
-                // add participant if not exists
-                if (find(rm.participants.begin(), rm.participants.end(), user) == rm.participants.end()) {
-                    rm.participants.push_back(user);
-                    rm.scores[user] = 0;
-                    rm.answers[user].resize(rm.numQuestions);
-                    persistRoomsToFile();
-                }
-                resp["status"] = "ok";
-                resp["message"] = "Joined room " + roomName;
-                resp["participants"] = (int)rm.participants.size();
-                writeLog(user + " JOINED " + roomName);
-            } else {
-                resp["status"] = "fail";
-                resp["message"] = "Room not found.";
-            }
-            sendJSON(clientSock, resp);
-        }
-
-        else if (cmd == "START") {
-            string roomName;
-            ss >> roomName;
-            json msg;
-            if (!rooms.count(roomName)) {
-                json resp;
-                resp["status"] = "fail";
-                resp["message"] = "Room not found.";
-                sendJSON(clientSock, resp);
-            } else {
-                auto &room = rooms[roomName];
-                room.started = true;
-                msg["status"] = "start";
-                msg["message"] = "Test started!";
-                json qarr = json::array();
-                for (size_t i = 0; i < room.questions.size(); ++i) {
-                    json q;
-                    q["id"] = (int)(i+1);
-                    q["text"] = room.questions[i].question;
-                    if (room.questions[i].options.size() >= 4) {
-                        q["A"] = room.questions[i].options[0];
-                        q["B"] = room.questions[i].options[1];
-                        q["C"] = room.questions[i].options[2];
-                        q["D"] = room.questions[i].options[3];
-                    }
-                    qarr.push_back(q);
-                }
-                msg["questions"] = qarr;
-                // send to starter (client will receive and answer inline)
-                sendJSON(clientSock, msg);
-                writeLog(username + " STARTED " + roomName);
-            }
-        }
-
-        else if (cmd == "ANSWER") {
-            // kept for backward compatibility
-            string roomName;
-            int qNum;
-            char ans;
-            ss >> roomName >> qNum >> ans;
-            auto &room = rooms[roomName];
-            room.answers[username].resize(room.numQuestions);
-            room.answers[username][qNum - 1] = ans;
-            json resp = {{"status", "ok"}, {"message", "Answer saved."}};
-            sendJSON(clientSock, resp);
-        }
-
-        else if (cmd == "SUBMIT") {
-            // Accept two forms:
-            // 1) SUBMIT room user answersCSV  (answersCSV: A,B,C,...)
-            // 2) SUBMIT room user               (use previously recorded answers)
-            string roomName, user, answersCSV;
-            ss >> roomName >> user;
-            if (!(ss >> answersCSV)) answersCSV = ""; // may be empty
-
-            json resp;
-            if (!rooms.count(roomName)) {
-                resp["status"] = "fail";
-                resp["message"] = "Room not found.";
-                sendJSON(clientSock, resp);
-            } else {
-                auto &room = rooms[roomName];
-                int score = 0;
-                vector<char> given;
-                if (!answersCSV.empty()) {
-                    // parse CSV
-                    string tmp;
-                    stringstream s2(answersCSV);
-                    while (getline(s2, tmp, ',')) {
-                        if (!tmp.empty()) {
-                            char c = toupper(tmp[0]);
-                            given.push_back(c);
-                        } else {
-                            given.push_back(' ');
-                        }
-                    }
+        if (strcmp(cmd, "REGISTER") == 0) {
+            char user[64], pass[64];
+            if (sscanf(buffer, "REGISTER %63s %63s", user, pass) == 2) {
+                int result = register_user(user, pass);
+                if (result == 1) {
+                    send_msg(cli->sock, "SUCCESS Registered. Please login.\n");
+                    sprintf(log_msg, "User %s registered.", user);
+                    writeLog(log_msg);
+                } else if (result == 0) {
+                    send_msg(cli->sock, "FAIL User already exists\n");
                 } else {
-                    // use recorded answers
-                    given = room.answers[user];
+                    send_msg(cli->sock, "FAIL Server error registering user\n");
                 }
-                for (int i = 0; i < room.numQuestions; ++i) {
-                    if (i < (int)given.size() && given[i] == room.questions[i].correct) score++;
-                }
-                room.scores[user] = score;
-                appendResultToFile(roomName, user, score);
-
-                resp["status"] = "done";
-                resp["score"] = score;
-                resp["total"] = room.numQuestions;
-                resp["message"] = "Test submitted.";
-                writeLog(user + " SUBMITTED " + roomName + " SCORE:" + to_string(score));
-                sendJSON(clientSock, resp);
-            }
-        }
-
-        else if (cmd == "RESULTS") {
-            string roomName;
-            ss >> roomName;
-            json resp;
-            resp["status"] = "ok";
-            resp["room"] = roomName;
-            if (!rooms.count(roomName)) {
-                resp["results"] = json::array();
-                resp["total"] = 0;
             } else {
-                auto &room = rooms[roomName];
-                resp["total"] = room.numQuestions;
-                json results = json::array();
-                for (auto &[user, s] : room.scores) {
-                    json r;
-                    r["user"] = user;
-                    r["score"] = s;
-                    results.push_back(r);
-                }
-                // sort results by score desc
-                sort(results.begin(), results.end(), [](const json &a, const json &b){
-                    return a.value("score",0) > b.value("score",0);
-                });
-                resp["results"] = results;
+                send_msg(cli->sock, "FAIL Invalid REGISTER format\n");
             }
-            sendJSON(clientSock, resp);
+        }
+        
+        else if (strcmp(cmd, "LOGIN") == 0) {
+            char user[64], pass[64];
+            sscanf(buffer, "LOGIN %63s %63s", user, pass);
+            char role[32] = "student";
+
+            if (validate_user(user, pass, role)) {
+                strcpy(cli->username, user);
+                strcpy(cli->role, role);
+                cli->loggedIn = 1;
+
+                char msg[128];
+                sprintf(msg, "SUCCESS %s\n", role); // Send SUCCESS
+                send_msg(cli->sock, msg);
+                
+                sprintf(log_msg, "User %s logged in as %s.", user, role);
+                writeLog(log_msg);
+            } else {
+                send_msg(cli->sock, "FAIL Invalid username or password\n");
+            }
         }
 
-        else if (cmd == "EXIT") {
-            writeLog(username + " DISCONNECTED");
-            break;
-        } else {
-            json resp;
-            resp["status"] = "fail";
-            resp["message"] = "Unknown command.";
-            sendJSON(clientSock, resp);
+        else if (!cli->loggedIn) {
+            send_msg(cli->sock, "FAIL Please login first\n");
         }
-        writeLog("CMD from " + (username.empty() ? string("unknown") : username) + ": " + input);
+
+        else if (strcmp(cmd, "CREATE") == 0) {
+            char roomName[64], topic[64] = "", diff[32] = "";
+            int numQ, dur;
+            int n = sscanf(buffer, "CREATE %63s %d %d %63s %31s", roomName, &numQ, &dur, topic, diff);
+            
+            if (n < 3) {
+                 send_msg(cli->sock, "FAIL Usage: CREATE <name> <numQ> <duration> [topic] [difficulty]\n");
+            } else if (find_room(roomName)) {
+                send_msg(cli->sock, "FAIL Room exists\n");
+            } else if (numQ > MAX_QUESTIONS_PER_ROOM) {
+                sprintf(buffer, "FAIL Max questions is %d\n", MAX_QUESTIONS_PER_ROOM);
+                send_msg(cli->sock, buffer);
+            } else {
+                Room *r = &rooms[roomCount++];
+                strcpy(r->name, roomName);
+                strcpy(r->owner, cli->username);
+                r->duration = dur;
+                r->participantCount = 0;
+                r->started = 0;
+                
+                // Load questions using module, with filters
+                r->numQuestions = loadQuestionsTxt("data/questions.txt", r->questions, numQ, 
+                                                 (n >= 4 ? topic : NULL), 
+                                                 (n >= 5 ? diff : NULL));
+
+                send_msg(cli->sock, "SUCCESS Room created\n");
+                sprintf(log_msg, "User %s created room %s (%d questions).", cli->username, roomName, r->numQuestions);
+                writeLog(log_msg);
+            }
+        }
+
+        else if (strcmp(cmd, "LIST") == 0) {
+            char msg[2048] = "SUCCESS Rooms:\n";
+            if (roomCount == 0) {
+                strcat(msg, "No rooms available.\n");
+            }
+            for (int i = 0; i < roomCount; i++) {
+                char line[256];
+                sprintf(line, "- %s (Owner: %s, Qs: %d, Time: %d sec, Status: %s)\n",
+                        rooms[i].name, rooms[i].owner, rooms[i].numQuestions, rooms[i].duration,
+                        rooms[i].started ? "Started" : "Waiting");
+                strcat(msg, line);
+            }
+            send_msg(cli->sock, msg);
+        }
+
+        else if (strcmp(cmd, "JOIN") == 0) {
+            char roomName[64];
+            sscanf(buffer, "JOIN %63s", roomName); // Fixed: only need room name
+            Room *r = find_room(roomName);
+            if (!r) {
+                send_msg(cli->sock, "FAIL Room not found\n");
+            } else if (r->started) {
+                send_msg(cli->sock, "FAIL Test has already started\n");
+            } else {
+                Participant *p = find_participant(r, cli->username);
+                if (!p) {
+                    p = &r->participants[r->participantCount++];
+                    strcpy(p->username, cli->username);
+                    p->score = 0;
+                    memset(p->answers, 0, sizeof(p->answers));
+                }
+                send_msg(cli->sock, "SUCCESS Joined room\n");
+                sprintf(log_msg, "User %s joined room %s.", cli->username, roomName);
+                writeLog(log_msg);
+            }
+        }
+
+        else if (strcmp(cmd, "START") == 0) {
+            char roomName[64];
+            sscanf(buffer, "START %63s", roomName);
+            Room *r = find_room(roomName);
+            if (!r) send_msg(cli->sock, "FAIL Room not found\n");
+            else if (strcmp(r->owner, cli->username) != 0 && strcmp(cli->role, "admin") != 0) {
+                send_msg(cli->sock, "FAIL Only the owner or admin can start the test\n");
+            } else {
+                r->started = 1;
+                // Send SUCCESS with num questions and duration
+                sprintf(buffer, "SUCCESS %d %d\n", r->numQuestions, r->duration);
+                send_msg(cli->sock, buffer);
+                
+                sprintf(log_msg, "Room %s started by %s.", roomName, cli->username);
+                writeLog(log_msg);
+            }
+        }
+
+        else if (strcmp(cmd, "GET_QUESTION") == 0) {
+            char roomName[64];
+            int q_index;
+            sscanf(buffer, "GET_QUESTION %63s %d", roomName, &q_index);
+            Room *r = find_room(roomName);
+            if (!r) send_msg(cli->sock, "FAIL Room not found\n");
+            else if (!r->started) send_msg(cli->sock, "FAIL Test not started\n");
+            else if (q_index < 0 || q_index >= r->numQuestions) send_msg(cli->sock, "FAIL Invalid question index\n");
+            else {
+                // Send the full question data
+                QItem *q = &r->questions[q_index];
+                sprintf(buffer, "[%d/%d] %s\nA) %s\nB) %s\nC) %s\nD) %s\n",
+                        q_index + 1, r->numQuestions, q->text, q->A, q->B, q->C, q->D);
+                send_msg(cli->sock, buffer);
+            }
+        }
+
+        else if (strcmp(cmd, "SUBMIT") == 0) {
+            char roomName[64], answers[256];
+            sscanf(buffer, "SUBMIT %63s %255s", roomName, answers);
+            Room *r = find_room(roomName);
+            if (!r) send_msg(cli->sock, "FAIL Room not found\n");
+            else {
+                Participant *p = find_participant(r, cli->username);
+                if (!p) send_msg(cli->sock, "FAIL You are not in this room\n");
+                else {
+                    int score = 0;
+                    for (int i = 0; i < r->numQuestions && i < (int)strlen(answers); i++) {
+                        if (answers[i] == '.') continue; // Unanswered
+                        if (toupper(answers[i]) == r->questions[i].correct)
+                            score++;
+                    }
+                    p->score = score;
+                    
+                    // --- Feature from stats.h REMOVED ---
+                    // append_result_file(roomName, cli->username, score);
+                    
+                    char msg[128];
+                    sprintf(msg, "SUCCESS Submitted. Score=%d/%d\n", score, r->numQuestions);
+                    send_msg(cli->sock, msg);
+                    
+                    sprintf(log_msg, "User %s submitted for room %s. Score: %d/%d.", cli->username, roomName, score, r->numQuestions);
+                    writeLog(log_msg);
+                }
+            }
+        }
+        
+        else if (strcmp(cmd, "RESULTS") == 0) {
+            char roomName[64];
+            sscanf(buffer, "RESULTS %63s", roomName);
+            Room *r = find_room(roomName);
+            if (!r) send_msg(cli->sock, "FAIL Room not found\n");
+            else {
+                char msg[2048];
+                sprintf(msg, "SUCCESS Results for %s (%d Qs):\n", roomName, r->numQuestions);
+                for(int i=0; i<r->participantCount; i++) {
+                    char line[128];
+                    sprintf(line, "- %-20s: %d/%d\n", r->participants[i].username, r->participants[i].score, r->numQuestions);
+                    strcat(msg, line);
+                }
+                send_msg(cli->sock, msg);
+            }
+        }
+        
+        else if (strcmp(cmd, "LEADERBOARD") == 0) {
+            // --- Feature from stats.h REMOVED ---
+            // char *board = get_leaderboard();
+            // send_msg(cli->sock, board);
+            send_msg(cli->sock, "FAIL Leaderboard feature is disabled.\n");
+        }
+        
+        else if (strcmp(cmd, "PRACTICE") == 0) {
+            if (practiceQuestionCount == 0) {
+                send_msg(cli->sock, "FAIL No practice questions available on server.\n");
+            } else {
+                // Send one random question
+                int rand_idx = rand() % practiceQuestionCount;
+                QItem *q = &practiceQuestions[rand_idx];
+                sprintf(buffer, "PRACTICE_Q %s\nA) %s\nB) %s\nC) %s\nD) %s\n%c\n",
+                        q->text, q->A, q->B, q->C, q->D, q->correct);
+                send_msg(cli->sock, buffer);
+            }
+        }
+
+        else if (strcmp(cmd, "EXIT") == 0) {
+            send_msg(cli->sock, "SUCCESS Goodbye\n");
+            pthread_mutex_unlock(&lock);
+            break;
+        }
+
+        else {
+            send_msg(cli->sock, "FAIL Unknown command\n");
+        }
+
+        pthread_mutex_unlock(&lock);
     }
 
-    close(clientSock);
-    lock_guard<mutex> lock(mtx);
-    clients.erase(clientSock);
-    cout << username << " disconnected.\n";
-    writeLog((username.empty() ? string("unknown") : username) + " connection closed");
+    close(cli->sock);
+    sprintf(log_msg, "Client %s disconnected.", cli->username[0] ? cli->username : "(unknown)");
+    writeLog(log_msg);
+    free(cli);
+    return NULL;
 }
 
+// ======================= Main =======================
 int main() {
-    filesystem::create_directories(dataDir);
-    loadRoomsFromFile();
+    pthread_mutex_init(&lock, NULL);
+    srand(time(NULL)); // For practice mode
 
-    int serverSock = socket(AF_INET, SOCK_STREAM, 0);
-    sockaddr_in serverAddr{}, clientAddr{};
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(9000);
-    serverAddr.sin_addr.s_addr = INADDR_ANY;
+    // Load practice questions at start
+    practiceQuestionCount = loadQuestionsTxt("data/questions.txt", practiceQuestions, MAX_Q, NULL, NULL);
+    if (practiceQuestionCount > 0) {
+        printf("Loaded %d practice questions.\n", practiceQuestionCount);
+    } else {
+        printf("Warning: Could not load practice questions from data/questions.txt\n");
+    }
 
-    if (bind(serverSock, (sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
-        cerr << "Bind failed.\n";
+    int server_sock = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(PORT);
+    addr.sin_addr.s_addr = INADDR_ANY;
+    
+    // Allow address reuse
+    int opt = 1;
+    setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    if (bind(server_sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        perror("Bind failed");
         return 1;
     }
-    listen(serverSock, 10);
-    cout << "Server running on port 9000...\n";
-    writeLog("SERVER_START");
 
-    while (true) {
-        socklen_t clientSize = sizeof(clientAddr);
-        int clientSock = accept(serverSock, (sockaddr*)&clientAddr, &clientSize);
-        if (clientSock >= 0) {
-            cout << "New client connected.\n";
-            thread(handleClient, clientSock).detach();
+    listen(server_sock, 10);
+    printf("Server running on port %d...\n", PORT);
+    writeLog("SERVER_STARTED");
+
+    while (1) {
+        struct sockaddr_in cli_addr;
+        socklen_t len = sizeof(cli_addr);
+        int cli_sock = accept(server_sock, (struct sockaddr*)&cli_addr, &len);
+        if (cli_sock >= 0) {
+            Client *cli = (Client*) malloc(sizeof(Client));
+            cli->sock = cli_sock;
+            cli->loggedIn = 0;
+            strcpy(cli->username, "");
+            strcpy(cli->role, "student");
+
+            pthread_t tid;
+            pthread_create(&tid, NULL, handle_client, cli);
+            pthread_detach(tid);
         }
     }
-    close(serverSock);
+
+    close(server_sock);
+    pthread_mutex_destroy(&lock);
     return 0;
 }

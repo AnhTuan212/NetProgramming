@@ -1,24 +1,24 @@
-#include "logger.h"
-#include <fstream>
-#include <ctime>
-#include <filesystem>
-#include <string>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <sys/stat.h>
 
-using namespace std;
+#define LOG_FILE "data/logs.txt"
 
-static const string logsPath = "data/logs.txt";
 
-void writeLog(const std::string &event) {
-    // ensure data dir exists
-    std::filesystem::create_directories("data");
+// Write log event to file
+void writeLog(const char *event) {
+    if (!event) return;
 
-    ofstream fout(logsPath, ios::app);
-    if (!fout.is_open()) return;
+    FILE *fp = fopen(LOG_FILE, "a");
+    if (!fp) return;
 
-    time_t now = time(0);
-    char buf[80];
-    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    char timebuf[64];
+    strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S", t);
 
-    fout << buf << " - " << event << "\n";
-    fout.close();
+    fprintf(fp, "%s - %s\n", timebuf, event);
+    fclose(fp);
 }

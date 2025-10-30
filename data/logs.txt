@@ -80,3 +80,11 @@
 2025-10-24 11:19:36 - CMD from alice: SUBMIT mot alice
 2025-10-24 11:19:45 - CMD from alice: RESULTS mot
 2025-10-24 11:19:50 - CMD from alice: RESULTS mot
+2025-10-30 08:10:37 - SERVER_STARTED
+2025-10-30 08:11:42 - SERVER_STARTED
+2025-10-30 08:11:57 - User admin logged in as admin.
+2025-10-30 08:12:13 - User admin created room mot (5 questions).
+2025-10-30 08:12:25 - User admin joined room mot.
+2025-10-30 08:12:29 - Room mot started by admin.
+2025-10-30 08:12:51 - User admin submitted for room mot. Score: 1/5.
+2025-10-30 08:14:13 - Client admin disconnected.

@@ -1,4 +1,3 @@
-username password
-admin 123
-alice abc
-bob 111
+admin,admin123,admin
+bob,bob123,student
+alice,alice123,student
