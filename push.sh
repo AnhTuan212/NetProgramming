@@ -14,4 +14,4 @@ git commit -m "Updated files for change to c"
 git branch -M main
 
 # 5. Thực hiện Push
-git push -u origin main
+git push --force origin main
