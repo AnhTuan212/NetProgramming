@@ -1,3 +1,6 @@
-admin,admin123,admin
-bob,bob123,student
-alice,alice123,student
+messi|123|admin
+dang|123|student
+nam|123|student
+tuanngao|123|student
+tung|123456|admin
+yen|123|admin

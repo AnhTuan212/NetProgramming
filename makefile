@@ -1,33 +1,34 @@
-# --- Compiler settings ---
-CXX       := g++
-CXXFLAGS  := -std=c++17 -Wall -Wextra -pthread
-LDFLAGS   := -pthread
+# --- Compiler ---
+CC       := gcc
+CFLAGS   := -std=c11 -Wall -Wextra -pthread -g
+LDFLAGS  := -pthread
 
-# --- Source files ---
-SERVER_SRCS := server.cpp user_manager.cpp question_bank.cpp logger.cpp stats.cpp
-CLIENT_SRCS := client.cpp
+# --- Sources ---
+SERVER_SRCS := server.c user_manager.c question_bank.c logger.c
+CLIENT_SRCS := client.c
+STATS_OBJ   := stats.o
 
-SERVER_OBJS := $(SERVER_SRCS:.cpp=.o)
-CLIENT_OBJS := $(CLIENT_SRCS:.cpp=.o)
+SERVER_OBJS := $(SERVER_SRCS:.c=.o)
+CLIENT_OBJS := $(CLIENT_SRCS:.c=.o)
 
-# --- Default target ---
+# --- Targets ---
 all: server client
 
-# --- Build server ---
-server: $(SERVER_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $(SERVER_OBJS) $(LDFLAGS)
+server: $(SERVER_OBJS) $(STATS_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# --- Build client ---
 client: $(CLIENT_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $(CLIENT_OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# --- Generic rule for .cpp -> .o ---
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-# --- Clean up ---
+data_dir:
+	mkdir -p data
+
 clean:
 	rm -f *.o server client
 
-# --- Convenience target to rebuild everything ---
 rebuild: clean all
+
+.PHONY: all clean rebuild data_dir

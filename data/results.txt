@@ -1,3 +1,0 @@
-room,username,score
-room2,alice,3
-room1,bob,4

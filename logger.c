@@ -1,3 +1,4 @@
+#include "common.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,10 +7,13 @@
 
 #define LOG_FILE "data/logs.txt"
 
-
-// Write log event to file
 void writeLog(const char *event) {
     if (!event) return;
+
+    struct stat st = {0};
+    if (stat("data", &st) == -1) {
+        mkdir("data", 0700);
+    }
 
     FILE *fp = fopen(LOG_FILE, "a");
     if (!fp) return;
