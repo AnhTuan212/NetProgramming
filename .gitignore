@@ -1,0 +1,14 @@
+# 1. Bỏ qua file object (file trung gian khi biên dịch)
+*.o
+
+# 2. Bỏ qua file thực thi (Executable)
+server
+client
+
+# 3. Bỏ qua cấu hình editor (VS Code,...)
+.vscode/
+.idea/
+*.swp
+
+# 5. File hệ thống
+.DS_Store

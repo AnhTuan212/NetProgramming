@@ -1,90 +1,29 @@
-[2025-10-22 10:00] alice LOGIN
-[2025-10-22 10:05] alice CREATE room1
-2025-10-24 10:55:19 - SERVER_START
-2025-10-24 10:55:26 - CLIENT_CONNECTED
-2025-10-24 10:55:30 - FAILED_LOGIN:bob
-2025-10-24 10:55:30 - CMD from unknown: LOGIN bob bob123
-2025-10-24 10:55:46 - FAILED_LOGIN:admin
-2025-10-24 10:55:46 - CMD from unknown: LOGIN admin 123
-2025-10-24 10:55:59 - FAILED_LOGIN:bob
-2025-10-24 10:55:59 - CMD from unknown: LOGIN bob 111
-2025-10-24 10:56:12 - FAILED_LOGIN:alice
-2025-10-24 10:56:12 - CMD from unknown: LOGIN alice abc
-2025-10-24 10:59:17 - SERVER_START
-2025-10-24 10:59:23 - CLIENT_CONNECTED
-2025-10-24 10:59:28 - bob LOGIN
-2025-10-24 10:59:28 - CMD from bob: LOGIN bob 111
-2025-10-24 10:59:40 - admin LOGIN
-2025-10-24 10:59:40 - CMD from admin: LOGIN admin 123
-2025-10-24 10:59:48 - CMD from admin: LIST
-2025-10-24 11:00:01 - admin CREATED_ROOM:mot
-2025-10-24 11:00:01 - CMD from admin: CREATE mot 3 5
-2025-10-24 11:00:19 - admin JOINED mot
-2025-10-24 11:00:19 - CMD from admin: JOIN mot admin
-2025-10-24 11:00:35 - CLIENT_CONNECTED
-2025-10-24 11:00:50 - alice LOGIN
-2025-10-24 11:00:50 - CMD from alice: LOGIN alice abc
-2025-10-24 11:01:01 - bob LOGIN
-2025-10-24 11:01:01 - CMD from bob: LOGIN bob 111
-2025-10-24 11:01:10 - bob JOINED mot
-2025-10-24 11:01:10 - CMD from bob: JOIN mot bob
-2025-10-24 11:01:30 - admin JOINED mot
-2025-10-24 11:01:30 - CMD from admin: JOIN mot admin
-2025-10-24 11:01:44 - bob JOINED mot
-2025-10-24 11:01:44 - CMD from bob: JOIN mot bob
-2025-10-24 11:16:28 - SERVER_START
-2025-10-24 11:16:32 - CLIENT_CONNECTED
-2025-10-24 11:16:52 - admin LOGIN
-2025-10-24 11:16:52 - CMD from admin: LOGIN admin 123
-2025-10-24 11:16:57 - admin LOGIN
-2025-10-24 11:16:57 - CMD from admin: LOGIN admin 123
-2025-10-24 11:17:07 - CLIENT_CONNECTED
-2025-10-24 11:17:13 - alice LOGIN
-2025-10-24 11:17:13 - CMD from alice: LOGIN alice abc
-2025-10-24 11:17:19 - alice LOGIN
-2025-10-24 11:17:19 - CMD from alice: LOGIN alice abc
-2025-10-24 11:17:42 - CMD from alice: CREATE mot 2 5
-2025-10-24 11:17:48 - alice JOINED mot
-2025-10-24 11:17:48 - CMD from alice: JOIN mot alice
-2025-10-24 11:17:53 - alice JOINED mot
-2025-10-24 11:17:53 - CMD from alice: JOIN mot alice
-2025-10-24 11:18:01 - admin JOINED mot
-2025-10-24 11:18:01 - CMD from admin: JOIN mot admin
-2025-10-24 11:18:07 - admin JOINED mot
-2025-10-24 11:18:07 - CMD from admin: JOIN mot admin
-2025-10-24 11:18:15 - admin STARTED mot
-2025-10-24 11:18:15 - CMD from admin: START mot
-2025-10-24 11:18:21 - admin JOINED mot
-2025-10-24 11:18:21 - CMD from admin: JOIN mot admin
-2025-10-24 11:18:28 - admin STARTED mot
-2025-10-24 11:18:28 - CMD from admin: START mot
-2025-10-24 11:18:40 - alice STARTED mot
-2025-10-24 11:18:40 - CMD from alice: START mot
-2025-10-24 11:18:50 - alice STARTED mot
-2025-10-24 11:18:50 - CMD from alice: START mot
-2025-10-24 11:19:09 - alice SUBMITTED mot SCORE:2
-2025-10-24 11:19:09 - CMD from alice: SUBMIT mot alice B,C
-2025-10-24 11:19:13 - alice STARTED mot
-2025-10-24 11:19:13 - CMD from alice: START mot
-2025-10-24 11:19:15 - alice STARTED mot
-2025-10-24 11:19:15 - CMD from alice: START mot
-2025-10-24 11:19:21 - alice SUBMITTED mot SCORE:2
-2025-10-24 11:19:21 - CMD from alice: SUBMIT mot alice B,C
-2025-10-24 11:19:26 - alice STARTED mot
-2025-10-24 11:19:26 - CMD from alice: START mot
-2025-10-24 11:19:29 - alice STARTED mot
-2025-10-24 11:19:29 - CMD from alice: START mot
-2025-10-24 11:19:34 - alice SUBMITTED mot SCORE:2
-2025-10-24 11:19:34 - CMD from alice: SUBMIT mot alice B,C
-2025-10-24 11:19:36 - alice SUBMITTED mot SCORE:0
-2025-10-24 11:19:36 - CMD from alice: SUBMIT mot alice
-2025-10-24 11:19:45 - CMD from alice: RESULTS mot
-2025-10-24 11:19:50 - CMD from alice: RESULTS mot
-2025-10-30 08:10:37 - SERVER_STARTED
-2025-10-30 08:11:42 - SERVER_STARTED
-2025-10-30 08:11:57 - User admin logged in as admin.
-2025-10-30 08:12:13 - User admin created room mot (5 questions).
-2025-10-30 08:12:25 - User admin joined room mot.
-2025-10-30 08:12:29 - Room mot started by admin.
-2025-10-30 08:12:51 - User admin submitted for room mot. Score: 1/5.
-2025-10-30 08:14:13 - Client admin disconnected.
+2025-11-01 10:48:39 - SERVER_STARTED
+2025-11-01 11:16:51 - SERVER_STARTED
+2025-11-01 11:17:19 - User tuan registered as student.
+2025-11-02 14:59:58 - SERVER_STARTED
+2025-11-02 15:05:24 - SERVER_STARTED
+2025-11-02 15:52:04 - SERVER_STARTED
+2025-11-02 15:52:29 - User messi registered as admin.
+2025-11-02 15:53:36 - User dang registered as student.
+2025-11-02 15:53:55 - User nam registered as student.
+2025-11-03 12:55:32 - SERVER_STARTED
+2025-11-03 13:12:20 - SERVER_STARTED
+2025-11-03 13:13:41 - SERVER_STARTED
+2025-11-03 13:29:48 - SERVER_STARTED
+2025-11-03 13:32:41 - SERVER_STARTED
+2025-11-03 13:46:06 - SERVER_STARTED
+2025-11-03 13:50:47 - SERVER_STARTED
+2025-11-04 13:44:09 - SERVER_STARTED
+2025-11-04 13:45:28 - User tuanngao registered as student.
+2025-11-26 15:23:25 - SERVER_STARTED
+2025-11-26 16:31:58 - SERVER_STARTED
+2025-11-26 16:32:19 - User tung registered as admin.
+2025-11-26 16:32:36 - Failed register attempt for admin user hih (Wrong Code).
+2025-11-26 16:49:20 - SERVER_STARTED
+2025-11-26 17:06:14 - SERVER_STARTED
+2025-11-26 17:13:37 - SERVER_STARTED
+2025-11-26 17:16:33 - SERVER_STARTED
+2025-11-27 07:10:49 - SERVER_STARTED
+2025-11-27 07:11:25 - Register failed for admin yen (Wrong Code)
+2025-11-27 07:11:37 - User yen registered as admin.
