@@ -3,3 +3,4 @@
 3|Which loop repeats until condition is false?|for|while|do-while|if|C|Programming|Easy
 4|What is 2 + 2 * 2?|8|6|4|10|B|Math|Easy
 5|Who painted Mona Lisa?|Picasso|Van Gogh|Da Vinci|Michelangelo|C|Art|Medium
+6|khanh an cut?|chuan|rat chuan|ngon luon|ok|A|khanh|easy

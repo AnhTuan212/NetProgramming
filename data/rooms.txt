@@ -25,3 +25,26 @@ test|messi|3|100|1
 Q|What is 10/3 in integer division in C?|3.33|3|4|0|B|Programming|Easy
 Q|What is the capital of France?|Berlin|Paris|Madrid|Rome|B|Geography|Easy
 Q|Which loop repeats until condition is false?|for|while|do-while|if|C|Programming|Easy
+anhtuan|anhtuan|5|10|1
+Q|What is 10/3 in integer division in C?|3.33|3|4|0|B|Programming|Easy
+Q|What is the capital of France?|Berlin|Paris|Madrid|Rome|B|Geography|Easy
+Q|Which loop repeats until condition is false?|for|while|do-while|if|C|Programming|Easy
+Q|What is 2 + 2 * 2?|8|6|4|10|B|Math|Easy
+Q|Who painted Mona Lisa?|Picasso|Van Gogh|Da Vinci|Michelangelo|C|Art|Medium
+lmaohi|cr7|5|300|1
+Q|What is 2 + 2 * 2?|8|6|4|10|B|Math|Easy
+Q|What is the capital of France?|Berlin|Paris|Madrid|Rome|B|Geography|Easy
+Q|Which loop repeats until condition is false?|for|while|do-while|if|C|Programming|Easy
+Q|What is 10/3 in integer division in C?|3.33|3|4|0|B|Programming|Easy
+Q|Who painted Mona Lisa?|Picasso|Van Gogh|Da Vinci|Michelangelo|C|Art|Medium
+khanhancut|cr7|2|300|1
+Q|What is 10/3 in integer division in C?|3.33|3|4|0|B|Programming|Easy
+Q|Which loop repeats until condition is false?|for|while|do-while|if|C|Programming|Easy
+khanhancut3|cr7|3|300|1
+Q|What is the capital of France?|Berlin|Paris|Madrid|Rome|B|Geography|Easy
+Q|Which loop repeats until condition is false?|for|while|do-while|if|C|Programming|Easy
+Q|What is 10/3 in integer division in C?|3.33|3|4|0|B|Programming|Easy
+khanhancut4|cr7|3|300|1
+Q|Which loop repeats until condition is false?|for|while|do-while|if|C|Programming|Easy
+Q|What is the capital of France?|Berlin|Paris|Madrid|Rome|B|Geography|Easy
+Q|What is 10/3 in integer division in C?|3.33|3|4|0|B|Programming|Easy

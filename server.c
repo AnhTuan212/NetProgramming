@@ -15,7 +15,6 @@
 #define BUF_SIZE 8192
 #define MAX_ROOMS 100
 #define MAX_PARTICIPANTS 50
-#define MAX_QUESTIONS_PER_ROOM 50
 #define MAX_Q 200
 #define MAX_ATTEMPTS 10
 
@@ -155,6 +154,7 @@ void* monitor_exam_thread(void *arg) {
         sleep(1);
         pthread_mutex_lock(&lock);
         time_t now = time(NULL);
+    
         
         for (int i = 0; i < roomCount; i++) {
             Room *r = &rooms[i];
@@ -242,23 +242,77 @@ void* handle_client(void *arg) {
             send_msg(cli->sock, "FAIL Please login first");
         }
         else if (strcmp(cmd, "CREATE") == 0 && strcmp(cli->role, "admin") == 0) {
-            char name[64], topic[64]="", diff[32]="";
+            char name[64], rest[512] = "";
             int numQ, dur;
-            sscanf(buffer, "CREATE %63s %d %d %63s %31s", name, &numQ, &dur, topic, diff);
-            if (find_room(name)) {
-                send_msg(cli->sock, "FAIL Room exists");
+            char topic_filter[256] = "", diff_filter[256] = "";
+            
+            // Parse command: CREATE name numQ dur [TOPICS topic:count ...] [DIFFICULTIES diff:count ...]
+            sscanf(buffer, "CREATE %63s %d %d %511s", name, &numQ, &dur, rest);
+            
+            // Parse filters from rest
+            if (strlen(rest) > 0) {
+                char rest_copy[512];
+                strcpy(rest_copy, rest);
+                
+                // Look for TOPICS and DIFFICULTIES keywords
+                char *topics_start = strstr(rest_copy, "TOPICS");
+                char *diffs_start = strstr(rest_copy, "DIFFICULTIES");
+                
+                if (topics_start) {
+                    topics_start += 6; // Skip "TOPICS"
+                    while (*topics_start == ' ') topics_start++;
+                    
+                    int topic_len = 0;
+                    if (diffs_start) {
+                        topic_len = diffs_start - topics_start - 1;
+                    } else {
+                        topic_len = strlen(topics_start);
+                    }
+                    strncpy(topic_filter, topics_start, topic_len);
+                    topic_filter[topic_len] = '\0';
+                }
+                
+                if (diffs_start) {
+                    diffs_start += 12; // Skip "DIFFICULTIES"
+                    while (*diffs_start == ' ') diffs_start++;
+                    strcpy(diff_filter, diffs_start);
+                }
+            }
+            
+            // Validate inputs
+            if (numQ < 1 || numQ > MAX_QUESTIONS_PER_ROOM) {
+                send_msg(cli->sock, "FAIL Number of questions must be 1-50");
+            } else if (dur < 10 || dur > 86400) {
+                send_msg(cli->sock, "FAIL Duration must be 10-86400 seconds");
+            } else if (find_room(name)) {
+                send_msg(cli->sock, "FAIL Room already exists");
             } else {
-                Room *r = &rooms[roomCount++];
-                strcpy(r->name, name);
-                strcpy(r->owner, cli->username);
-                r->duration = dur;
-                r->started = 1;
-                r->start_time = time(NULL);
-                r->participantCount = 0;
-                r->numQuestions = loadQuestionsTxt("data/questions.txt", r->questions, numQ,
-                                                  strlen(topic)?topic:NULL, strlen(diff)?diff:NULL);
-                send_msg(cli->sock, "SUCCESS Room created");
-                save_rooms();
+                // Load questions with combined filters
+                QItem temp_questions[MAX_QUESTIONS_PER_ROOM];
+                int loaded = loadQuestionsWithFilters("data/questions.txt", temp_questions, numQ,
+                                                      strlen(topic_filter) > 0 ? topic_filter : NULL,
+                                                      strlen(diff_filter) > 0 ? diff_filter : NULL);
+                
+                if (loaded == 0) {
+                    send_msg(cli->sock, "FAIL No questions match your criteria");
+                } else {
+                    Room *r = &rooms[roomCount++];
+                    strcpy(r->name, name);
+                    strcpy(r->owner, cli->username);
+                    r->duration = dur;
+                    r->started = 1;
+                    r->start_time = time(NULL);
+                    r->participantCount = 0;
+                    r->numQuestions = loaded;
+                    memcpy(r->questions, temp_questions, loaded * sizeof(QItem));
+                    
+                    char log_msg[256];
+                    sprintf(log_msg, "Admin %s created room %s with %d questions", cli->username, name, loaded);
+                    writeLog(log_msg);
+                    
+                    send_msg(cli->sock, "SUCCESS Room created");
+                    save_rooms();
+                }
             }
         }
         else if (strcmp(cmd, "LIST") == 0) {
@@ -453,6 +507,196 @@ void* handle_client(void *arg) {
                 send_msg(cli->sock, temp);
             }
         }
+        else if (strcmp(cmd, "GET_TOPICS") == 0) {
+            char topics_output[2048] = "SUCCESS ";
+            FILE *fp = fopen("data/questions.txt", "r");
+            if (fp) {
+                char line[BUF_SIZE];
+                char topics[512] = "";
+                char topic_counts[512] = "";
+                int topic_count[20] = {0};
+                char topic_names[20][64];
+                int num_topics = 0;
+                
+                while (fgets(line, sizeof(line), fp)) {
+                    char topic[64] = "";
+                    sscanf(line, "%*[^|]|%*[^|]|%*[^|]|%*[^|]|%*[^|]|%*[^|]|%*[^|]|%63[^|]", topic);
+                    if (strlen(topic) > 0) {
+                        to_lowercase(topic);
+                        // Find or add topic
+                        int found = -1;
+                        for (int i = 0; i < num_topics; i++) {
+                            if (strcmp(topic_names[i], topic) == 0) {
+                                found = i;
+                                break;
+                            }
+                        }
+                        if (found == -1) {
+                            strcpy(topic_names[num_topics], topic);
+                            topic_count[num_topics] = 1;
+                            num_topics++;
+                        } else {
+                            topic_count[found]++;
+                        }
+                    }
+                }
+                fclose(fp);
+                
+                // Format output: Topic(count)|Topic(count)|...
+                for (int i = 0; i < num_topics; i++) {
+                    char first_letter = topic_names[i][0];
+                    first_letter = toupper(first_letter);
+                    char rest[64];
+                    strcpy(rest, topic_names[i] + 1);
+                    char temp[128];
+                    snprintf(temp, sizeof(temp), "%c%s(%d)|", first_letter, rest, topic_count[i]);
+                    strcat(topics_output, temp);
+                }
+            }
+            send_msg(cli->sock, topics_output);
+        }
+        else if (strcmp(cmd, "GET_DIFFICULTIES") == 0) {
+            char diff_output[1024] = "SUCCESS ";
+            FILE *fp = fopen("data/questions.txt", "r");
+            if (fp) {
+                char line[BUF_SIZE];
+                int easy_count = 0, medium_count = 0, hard_count = 0;
+                while (fgets(line, sizeof(line), fp)) {
+                    char difficulty[32] = "";
+                    sscanf(line, "%*[^|]|%*[^|]|%*[^|]|%*[^|]|%*[^|]|%*[^|]|%*[^|]|%*[^|]|%31s", difficulty);
+                    if (strlen(difficulty) > 0) {
+                        to_lowercase(difficulty);
+                        if (strcmp(difficulty, "easy") == 0) easy_count++;
+                        else if (strcmp(difficulty, "medium") == 0) medium_count++;
+                        else if (strcmp(difficulty, "hard") == 0) hard_count++;
+                    }
+                }
+                fclose(fp);
+                char count_str[256];
+                snprintf(count_str, sizeof(count_str), "Easy(%d)|Medium(%d)|Hard(%d)|", easy_count, medium_count, hard_count);
+                strcat(diff_output, count_str);
+            }
+            send_msg(cli->sock, diff_output);
+        }
+        else if (strcmp(cmd, "ADD_QUESTION") == 0 && strcmp(cli->role, "admin") == 0) {
+            // Format: ADD_QUESTION text|A|B|C|D|correct|topic|difficulty
+            char text[256], A[128], B[128], C[128], D[128];
+            char correct_str[2], topic[64], difficulty[32];
+            
+            int parsed = sscanf(buffer, 
+                "ADD_QUESTION %255[^|]|%127[^|]|%127[^|]|%127[^|]|%127[^|]|%1[^|]|%63[^|]|%31s",
+                text, A, B, C, D, correct_str, topic, difficulty);
+            
+            if (parsed != 8) {
+                send_msg(cli->sock, "FAIL Invalid format: ADD_QUESTION text|A|B|C|D|correct|topic|difficulty");
+            } else {
+                // Create QItem for validation
+                QItem new_q;
+                memset(&new_q, 0, sizeof(QItem));
+                strncpy(new_q.text, text, sizeof(new_q.text)-1);
+                strncpy(new_q.A, A, sizeof(new_q.A)-1);
+                strncpy(new_q.B, B, sizeof(new_q.B)-1);
+                strncpy(new_q.C, C, sizeof(new_q.C)-1);
+                strncpy(new_q.D, D, sizeof(new_q.D)-1);
+                new_q.correct = toupper(correct_str[0]);
+                strncpy(new_q.topic, topic, sizeof(new_q.topic)-1);
+                strncpy(new_q.difficulty, difficulty, sizeof(new_q.difficulty)-1);
+                
+                // Validate question
+                char error_msg[256];
+                if (!validate_question_input(&new_q, error_msg)) {
+                    send_msg(cli->sock, error_msg);
+                } else {
+                    // Add to file (under mutex)
+                    int new_id = add_question_to_file(&new_q);
+                    if (new_id < 0) {
+                        send_msg(cli->sock, "FAIL Could not add question to file");
+                    } else {
+                        // Reload practice questions
+                        practiceQuestionCount = loadQuestionsTxt("data/questions.txt", practiceQuestions, MAX_Q, NULL, NULL);
+                        
+                        char msg[256];
+                        sprintf(msg, "SUCCESS Question added with ID %d", new_id);
+                        send_msg(cli->sock, msg);
+                        
+                        // Log
+                        char log_msg[512];
+                        sprintf(log_msg, "Admin %s added question ID %d to %s/%s", 
+                                cli->username, new_id, new_q.topic, new_q.difficulty);
+                        writeLog(log_msg);
+                    }
+                }
+            }
+        }
+        else if (strcmp(cmd, "SEARCH_QUESTIONS") == 0 && strcmp(cli->role, "admin") == 0) {
+            char filter_type[32], search_value[256];
+            sscanf(buffer, "SEARCH_QUESTIONS %31s %255[^\n]", filter_type, search_value);
+            
+            char result[8192] = "SUCCESS ";
+            int count = 0;
+            
+            if (strcmp(filter_type, "id") == 0) {
+                int id = atoi(search_value);
+                QItem q;
+                if (search_questions_by_id(id, &q)) {
+                    sprintf(result + strlen(result), "%d|%s|%s|%s|%s|%s|%c|%s|%s",
+                            q.id, q.text, q.A, q.B, q.C, q.D, q.correct, q.topic, q.difficulty);
+                    count = 1;
+                } else {
+                    strcpy(result, "FAIL No question found with that ID");
+                }
+            }
+            else if (strcmp(filter_type, "topic") == 0) {
+                char output[8192];
+                count = search_questions_by_topic(search_value, output);
+                if (count > 0) {
+                    strcat(result, output);
+                } else {
+                    strcpy(result, "FAIL No questions found with that topic");
+                }
+            }
+            else if (strcmp(filter_type, "difficulty") == 0) {
+                char output[8192];
+                count = search_questions_by_difficulty(search_value, output);
+                if (count > 0) {
+                    strcat(result, output);
+                } else {
+                    strcpy(result, "FAIL No questions found with that difficulty");
+                }
+            }
+            else {
+                strcpy(result, "FAIL Invalid filter type: use id, topic, or difficulty");
+            }
+            
+            send_msg(cli->sock, result);
+        }
+        else if (strcmp(cmd, "DELETE_QUESTION") == 0 && strcmp(cli->role, "admin") == 0) {
+            int question_id;
+            sscanf(buffer, "DELETE_QUESTION %d", &question_id);
+            
+            // First verify the question exists
+            QItem q;
+            if (!search_questions_by_id(question_id, &q)) {
+                send_msg(cli->sock, "FAIL Question not found");
+            } else {
+                // Delete the question
+                if (delete_question_by_id(question_id)) {
+                    // Reload practice questions
+                    practiceQuestionCount = loadQuestionsTxt("data/questions.txt", practiceQuestions, MAX_Q, NULL, NULL);
+                    
+                    char msg[256];
+                    sprintf(msg, "SUCCESS Question ID %d deleted", question_id);
+                    send_msg(cli->sock, msg);
+                    
+                    // Log
+                    char log_msg[512];
+                    sprintf(log_msg, "Admin %s deleted question ID %d (%s)", cli->username, question_id, q.text);
+                    writeLog(log_msg);
+                } else {
+                    send_msg(cli->sock, "FAIL Could not delete question");
+                }
+            }
+        }
         else if (strcmp(cmd, "EXIT") == 0) {
             send_msg(cli->sock, "SUCCESS Goodbye");
             pthread_mutex_unlock(&lock); break;
@@ -471,11 +715,53 @@ int main() {
     mkdir("data", 0755);
     pthread_mutex_init(&lock, NULL);
     srand(time(NULL));
-    load_rooms();
-    practiceQuestionCount = loadQuestionsTxt("data/questions.txt", practiceQuestions, MAX_Q, NULL, NULL);
+    
+    // ===== PHASE 1-2: Initialize Database =====
+    printf("Initializing SQLite database...\n");
+    if (!db_init(DB_PATH)) {
+        fprintf(stderr, "Failed to initialize database\n");
+        return 1;
+    }
+    
+    if (!db_create_tables()) {
+        fprintf(stderr, "Failed to create database tables\n");
+        db_close();
+        return 1;
+    }
+    
+    if (!db_init_default_difficulties()) {
+        fprintf(stderr, "Failed to initialize difficulties\n");
+        db_close();
+        return 1;
+    }
+    
+    printf("Database initialized successfully\n");
+    
+    // ===== PHASE 3: Migrate data from text files =====
+    // Check if migration is needed (first run)
+    sqlite3_stmt *stmt;
+    int needs_migration = 0;
+    
+    const char *check_users = "SELECT COUNT(*) FROM users";
+    if (sqlite3_prepare_v2(db, check_users, -1, &stmt, NULL) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_int(stmt, 0) == 0) {
+            needs_migration = 1;
+        }
+        sqlite3_finalize(stmt);
+    }
+    
+    if (needs_migration) {
+        printf("Performing initial data migration from text files...\n");
+        migrate_from_text_files(DATA_DIR);
+        verify_migration();
+    }
     
     // Gọi hàm writeLog từ logger.c
     writeLog("SERVER_STARTED");
+    
+    // Load rooms from text files (temporarily for backward compatibility)
+    load_rooms();
+    practiceQuestionCount = loadQuestionsTxt("data/questions.txt", practiceQuestions, MAX_Q, NULL, NULL);
 
     pthread_t mon_tid;
     pthread_create(&mon_tid, NULL, monitor_exam_thread, NULL);
@@ -501,5 +787,7 @@ int main() {
             pthread_detach(tid);
         }
     }
+    
+    db_close();
     return 0;
 }

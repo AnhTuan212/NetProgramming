@@ -8,7 +8,6 @@
 #include <time.h>
 #include <strings.h>
 
-#define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 9000
 #define BUFFER_SIZE 8192
 
@@ -42,6 +41,13 @@ void clear_stdin() {
     while ((c = getchar()) != '\n' && c != EOF);
 }
 
+void to_lowercase_client(char *str) {
+    if (!str) return;
+    for (int i = 0; str[i]; i++) {
+        str[i] = tolower(str[i]);
+    }
+}
+
 void print_banner() {
     system("clear");
     printf("====== ONLINE TEST CLIENT ======\n");
@@ -66,6 +72,8 @@ void print_banner() {
         printf("8. View Room Results\n");
         printf("9. View Leaderboard\n");
         printf("10. Practice\n");
+        printf("11. Add Questions\n");
+        printf("12. Delete Questions\n");
     } else {
         printf("3. View Room List\n");
         printf("4. Join Room → Start Test\n");
@@ -132,26 +140,184 @@ void handle_create_room() {
         printf("Only admin can create rooms.\n"); return;
     }
     
-    char room[100], topic[100] = "", diff[100] = "";
-    int num, dur;
+    char room[100];
+    int total_num, dur;
     
     printf("Room name: ");
     fgets(room, sizeof(room), stdin); trim_input_newline(room);
-    printf("Number of questions: ");
-    scanf("%d", &num); clear_stdin();
+    printf("Total number of questions: ");
+    scanf("%d", &total_num); clear_stdin();
     printf("Duration (seconds): ");
     scanf("%d", &dur); clear_stdin();
-    printf("Topic (optional): ");
-    fgets(topic, sizeof(topic), stdin); trim_input_newline(topic);
-    printf("Difficulty (optional): ");
-    fgets(diff, sizeof(diff), stdin); trim_input_newline(diff);
-
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd), "CREATE %s %d %d %s %s", room, num, dur,
-             strlen(topic) ? topic : " ", strlen(diff) ? diff : " ");
-    send_message(cmd);
-
+    
+    // Get topic counts from server
     char buffer[BUFFER_SIZE];
+    send_message("GET_TOPICS");
+    recv_message(buffer, sizeof(buffer));
+    
+    printf("\n====== SELECT TOPICS AND QUESTION DISTRIBUTION ======\n");
+    
+    char topic_selection[512] = "";
+    
+    if (strncmp(buffer, "SUCCESS", 7) == 0) {
+        char *topicData = buffer + 8;
+        
+        // Parse topics with counts and display interactively
+        char topics_copy[512];
+        strcpy(topics_copy, topicData);
+        
+        // Extract individual topics (format: Topic1(count)|Topic2(count)|...)
+        char *topic_list[32];
+        int topic_count = 0;
+        char *start = topics_copy;
+        char *end;
+        
+        while ((end = strchr(start, '|')) != NULL && topic_count < 32) {
+            int len = end - start;
+            topic_list[topic_count] = malloc(len + 1);
+            strncpy(topic_list[topic_count], start, len);
+            topic_list[topic_count][len] = '\0';
+            topic_count++;
+            start = end + 1;
+        }
+        
+        // Display each topic and collect input line by line
+        printf("\nEnter number of questions to take from each topic:\n");
+        printf("(Press Enter to skip a topic, or enter 0 to skip)\n\n");
+        
+        for (int i = 0; i < topic_count; i++) {
+            printf("%s: ", topic_list[i]);
+            char input[32];
+            fgets(input, sizeof(input), stdin);
+            trim_input_newline(input);
+            
+            int count = 0;
+            if (strlen(input) > 0) {
+                count = atoi(input);
+            }
+            
+            // Only add to selection if count > 0
+            if (count > 0) {
+                char topic_name[64];
+                strcpy(topic_name, topic_list[i]);
+                
+                // Extract just the topic name (remove the count in parentheses)
+                char *paren = strchr(topic_name, '(');
+                if (paren) *paren = '\0';
+                
+                // Convert to lowercase for consistency
+                for (int j = 0; topic_name[j]; j++) {
+                    topic_name[j] = tolower(topic_name[j]);
+                }
+                
+                if (strlen(topic_selection) > 0) {
+                    strcat(topic_selection, " ");
+                }
+                char topic_entry[128];
+                snprintf(topic_entry, sizeof(topic_entry), "%s:%d", topic_name, count);
+                strcat(topic_selection, topic_entry);
+            }
+            
+            free(topic_list[i]);
+        }
+    } else {
+        printf("Available topics: Programming, Geography, Math, Art\n");
+        printf("Enter topics and question count (format: topic_name:count)\n");
+        printf("Example: programming:5 geography:3 math:2\n");
+        printf("Or press Enter to use all available topics equally:\n");
+        fgets(topic_selection, sizeof(topic_selection), stdin);
+        trim_input_newline(topic_selection);
+    }
+    
+    // Get difficulty counts from server
+    send_message("GET_DIFFICULTIES");
+    recv_message(buffer, sizeof(buffer));
+    
+    printf("\n====== SELECT DIFFICULTIES AND DISTRIBUTION ======\n");
+    
+    char difficulty_selection[512] = "";
+    
+    if (strncmp(buffer, "SUCCESS", 7) == 0) {
+        char *diffData = buffer + 8;
+        
+        // Parse difficulties with counts and display interactively
+        char diff_copy[512];
+        strcpy(diff_copy, diffData);
+        
+        // Extract individual difficulties (format: Easy(count)|Medium(count)|Hard(count)|)
+        char *diff_list[10];
+        int diff_count = 0;
+        char *start = diff_copy;
+        char *end;
+        
+        while ((end = strchr(start, '|')) != NULL && diff_count < 10) {
+            int len = end - start;
+            diff_list[diff_count] = malloc(len + 1);
+            strncpy(diff_list[diff_count], start, len);
+            diff_list[diff_count][len] = '\0';
+            diff_count++;
+            start = end + 1;
+        }
+        
+        // Display each difficulty and collect input line by line
+        printf("\nEnter number of questions for each difficulty:\n");
+        printf("(Press Enter to skip a difficulty, or enter 0 to skip)\n\n");
+        
+        for (int i = 0; i < diff_count; i++) {
+            printf("%s: ", diff_list[i]);
+            char input[32];
+            fgets(input, sizeof(input), stdin);
+            trim_input_newline(input);
+            
+            int count = 0;
+            if (strlen(input) > 0) {
+                count = atoi(input);
+            }
+            
+            // Only add to selection if count > 0
+            if (count > 0) {
+                char diff_name[64];
+                strcpy(diff_name, diff_list[i]);
+                
+                // Extract just the difficulty name (remove the count in parentheses)
+                char *paren = strchr(diff_name, '(');
+                if (paren) *paren = '\0';
+                
+                // Convert to lowercase for consistency
+                for (int j = 0; diff_name[j]; j++) {
+                    diff_name[j] = tolower(diff_name[j]);
+                }
+                
+                if (strlen(difficulty_selection) > 0) {
+                    strcat(difficulty_selection, " ");
+                }
+                char diff_entry[128];
+                snprintf(diff_entry, sizeof(diff_entry), "%s:%d", diff_name, count);
+                strcat(difficulty_selection, diff_entry);
+            }
+            
+            free(diff_list[i]);
+        }
+    } else {
+        printf("Available difficulties: Easy, Medium, Hard\n");
+        printf("Enter difficulties and question count (format: difficulty_name:count)\n");
+        printf("Example: easy:3 medium:4 hard:2\n");
+        printf("Or press Enter to use all difficulties equally:\n");
+        fgets(difficulty_selection, sizeof(difficulty_selection), stdin);
+        trim_input_newline(difficulty_selection);
+    }
+    
+    char cmd[1024];
+    if (strlen(topic_selection) == 0 && strlen(difficulty_selection) == 0) {
+        // Use all questions mode
+        snprintf(cmd, sizeof(cmd), "CREATE %s %d %d", room, total_num, dur);
+    } else {
+        // Use distributed selection with topic and difficulty filters
+        snprintf(cmd, sizeof(cmd), "CREATE %s %d %d TOPICS %s DIFFICULTIES %s", 
+                 room, total_num, dur, topic_selection, difficulty_selection);
+    }
+    
+    send_message(cmd);
     recv_message(buffer, sizeof(buffer));
     printf("%s\n", buffer);
 }
@@ -253,7 +419,6 @@ void handle_start_test(int totalQ, int duration) {
             sleep(2);
             break;
         }
-
         // In danh sách câu hỏi
         for (int i = 0; i < totalQ; i++) {
             char q_line[300];
@@ -395,10 +560,297 @@ void handle_practice() {
     printf(ans[0] == correct_ans ? "Correct!\n" : "Wrong! Correct: %c\n", correct_ans);
 }
 
-int main() {
+void handle_add_question() {
+    if (!loggedIn || strcmp(currentRole, "admin") != 0) {
+        printf("Only admin can add questions.\n");
+        return;
+    }
+    
+    printf("\n====== ADD NEW QUESTION ======\n");
+    
+    char text[256], A[128], B[128], C[128], D[128];
+    char correct_str[2], topic[64], difficulty[32];
+    
+    printf("Question text (min 10 chars): ");
+    fgets(text, sizeof(text), stdin);
+    trim_input_newline(text);
+    
+    printf("Option A: ");
+    fgets(A, sizeof(A), stdin);
+    trim_input_newline(A);
+    
+    printf("Option B: ");
+    fgets(B, sizeof(B), stdin);
+    trim_input_newline(B);
+    
+    printf("Option C: ");
+    fgets(C, sizeof(C), stdin);
+    trim_input_newline(C);
+    
+    printf("Option D: ");
+    fgets(D, sizeof(D), stdin);
+    trim_input_newline(D);
+    
+    printf("Correct answer (A/B/C/D): ");
+    fgets(correct_str, sizeof(correct_str), stdin);
+    trim_input_newline(correct_str);
+    
+    // Get topic counts from server
+    char buffer[BUFFER_SIZE];
+    send_message("GET_TOPICS");
+    recv_message(buffer, sizeof(buffer));
+    
+    printf("\n====== SELECT TOPIC ======\n");
+    printf("Current topics:\n");
+    if (strncmp(buffer, "SUCCESS", 7) == 0) {
+        char *topicData = buffer + 8;
+        printf("%s\n", topicData);
+    } else {
+        printf("Programming(0)\nGeography(0)\nMath(0)\nArt(0)\n");
+    }
+    
+    // Topic is required - loop until user enters something
+    while (1) {
+        printf("Topic name (create new or select existing - REQUIRED): ");
+        fgets(topic, sizeof(topic), stdin);
+        trim_input_newline(topic);
+        
+        if (strlen(topic) > 0) {
+            break;
+        }
+        printf("ERROR: Topic cannot be empty. Please enter a topic.\n");
+    }
+    
+    // Get difficulty counts from server
+    send_message("GET_DIFFICULTIES");
+    recv_message(buffer, sizeof(buffer));
+    
+    printf("\n====== SELECT DIFFICULTY ======\n");
+    printf("Current difficulties:\n");
+    if (strncmp(buffer, "SUCCESS", 7) == 0) {
+        char *diffData = buffer + 8;
+        printf("%s\n", diffData);
+    } else {
+        printf("Easy(0)\nMedium(0)\nHard(0)\n");
+    }
+    
+    // Difficulty is required - loop until user enters valid value
+    while (1) {
+        printf("Difficulty (easy/medium/hard - REQUIRED): ");
+        fgets(difficulty, sizeof(difficulty), stdin);
+        trim_input_newline(difficulty);
+        
+        if (strlen(difficulty) > 0) {
+            // Convert to lowercase for validation
+            char diff_lower[32];
+            strcpy(diff_lower, difficulty);
+            to_lowercase_client(diff_lower);
+            
+            if (strcmp(diff_lower, "easy") == 0 || 
+                strcmp(diff_lower, "medium") == 0 || 
+                strcmp(diff_lower, "hard") == 0) {
+                strcpy(difficulty, diff_lower);
+                break;
+            }
+        }
+        printf("ERROR: Difficulty must be 'easy', 'medium', or 'hard'.\n");
+    }
+    
+    // Show review
+    printf("\n====== REVIEW QUESTION ======\n");
+    printf("Question: %s\n", text);
+    printf("A) %s\n", A);
+    printf("B) %s\n", B);
+    printf("C) %s\n", C);
+    printf("D) %s\n", D);
+    printf("Correct: %s\n", correct_str);
+    printf("Topic: %s\n", topic);
+    printf("Difficulty: %s\n", difficulty);
+    printf("==============================\n");
+    
+    printf("Add this question? (y/n): ");
+    char confirm[10];
+    fgets(confirm, sizeof(confirm), stdin);
+    
+    if (confirm[0] != 'y' && confirm[0] != 'Y') {
+        printf("Cancelled.\n");
+        return;
+    }
+    
+    // Send to server
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), 
+        "ADD_QUESTION %s|%s|%s|%s|%s|%s|%s|%s",
+        text, A, B, C, D, correct_str, topic, difficulty);
+    
+    send_message(cmd);
+    
+    recv_message(buffer, sizeof(buffer));
+    printf("%s\n", buffer);
+}
+
+void handle_delete_question() {
+    if (!loggedIn || strcmp(currentRole, "admin") != 0) {
+        printf("Only admin can delete questions.\n");
+        return;
+    }
+    
+    printf("\n====== DELETE QUESTION ======\n");
+    printf("Search by:\n");
+    printf("1. Question ID\n");
+    printf("2. Topic\n");
+    printf("3. Difficulty\n");
+    printf("0. Cancel\n");
+    printf("Select option: ");
+    
+    char choice[10];
+    fgets(choice, sizeof(choice), stdin);
+    trim_input_newline(choice);
+    
+    char filter_type[32], search_value[256];
+    char buffer[BUFFER_SIZE];
+    
+    if (strcmp(choice, "1") == 0) {
+        printf("Enter Question ID: ");
+        fgets(search_value, sizeof(search_value), stdin);
+        trim_input_newline(search_value);
+        strcpy(filter_type, "id");
+        
+        // Search for the question
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd), "SEARCH_QUESTIONS %s %s", filter_type, search_value);
+        send_message(cmd);
+        recv_message(buffer, sizeof(buffer));
+        
+        if (strncmp(buffer, "SUCCESS", 7) != 0) {
+            printf("%s\n", buffer);
+            return;
+        }
+        
+        // Parse and display the found question
+        char *data = buffer + 8;
+        printf("\n====== FOUND QUESTION ======\n");
+        printf("%s\n", data);
+        printf("==============================\n");
+        
+        printf("Delete this question? (y/n): ");
+        fgets(choice, sizeof(choice), stdin);
+        
+        if (choice[0] != 'y' && choice[0] != 'Y') {
+            printf("Cancelled.\n");
+            return;
+        }
+        
+        // Send delete command
+        snprintf(cmd, sizeof(cmd), "DELETE_QUESTION %s", search_value);
+        send_message(cmd);
+        recv_message(buffer, sizeof(buffer));
+        printf("%s\n", buffer);
+        
+    } else if (strcmp(choice, "2") == 0) {
+        printf("Enter Topic name: ");
+        fgets(search_value, sizeof(search_value), stdin);
+        trim_input_newline(search_value);
+        strcpy(filter_type, "topic");
+        
+        // Search for questions by topic
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd), "SEARCH_QUESTIONS %s %s", filter_type, search_value);
+        send_message(cmd);
+        recv_message(buffer, sizeof(buffer));
+        
+        if (strncmp(buffer, "SUCCESS", 7) != 0) {
+            printf("%s\n", buffer);
+            return;
+        }
+        
+        // Display search results
+        printf("\n====== QUESTIONS FOUND ======\n");
+        char *data = buffer + 8;
+        printf("%s\n", data);
+        printf("==============================\n");
+        
+        printf("Enter Question ID to delete: ");
+        char id_str[32];
+        fgets(id_str, sizeof(id_str), stdin);
+        trim_input_newline(id_str);
+        
+        printf("Delete question ID %s? (y/n): ", id_str);
+        fgets(choice, sizeof(choice), stdin);
+        
+        if (choice[0] != 'y' && choice[0] != 'Y') {
+            printf("Cancelled.\n");
+            return;
+        }
+        
+        // Send delete command
+        snprintf(cmd, sizeof(cmd), "DELETE_QUESTION %s", id_str);
+        send_message(cmd);
+        recv_message(buffer, sizeof(buffer));
+        printf("%s\n", buffer);
+        
+    } else if (strcmp(choice, "3") == 0) {
+        printf("Enter Difficulty (easy/medium/hard): ");
+        fgets(search_value, sizeof(search_value), stdin);
+        trim_input_newline(search_value);
+        
+        // Convert to lowercase
+        to_lowercase_client(search_value);
+        strcpy(filter_type, "difficulty");
+        
+        // Search for questions by difficulty
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd), "SEARCH_QUESTIONS %s %s", filter_type, search_value);
+        send_message(cmd);
+        recv_message(buffer, sizeof(buffer));
+        
+        if (strncmp(buffer, "SUCCESS", 7) != 0) {
+            printf("%s\n", buffer);
+            return;
+        }
+        
+        // Display search results
+        printf("\n====== QUESTIONS FOUND ======\n");
+        char *data = buffer + 8;
+        printf("%s\n", data);
+        printf("==============================\n");
+        
+        printf("Enter Question ID to delete: ");
+        char id_str[32];
+        fgets(id_str, sizeof(id_str), stdin);
+        trim_input_newline(id_str);
+        
+        printf("Delete question ID %s? (y/n): ", id_str);
+        fgets(choice, sizeof(choice), stdin);
+        
+        if (choice[0] != 'y' && choice[0] != 'Y') {
+            printf("Cancelled.\n");
+            return;
+        }
+        
+        // Send delete command
+        snprintf(cmd, sizeof(cmd), "DELETE_QUESTION %s", id_str);
+        send_message(cmd);
+        recv_message(buffer, sizeof(buffer));
+        printf("%s\n", buffer);
+        
+    } else if (strcmp(choice, "0") == 0) {
+        printf("Cancelled.\n");
+    } else {
+        printf("Invalid option.\n");
+    }
+}
+
+int main(int argc, char *argv[]) {
+    // Use command-line argument for SERVER_IP, or default to "127.0.0.1"
+    const char *server_ip = "127.0.0.1";
+    if (argc > 1) {
+        server_ip = argv[1];
+    }
+    
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in server_addr = { .sin_family = AF_INET, .sin_port = htons(SERVER_PORT) };
-    inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
+    inet_pton(AF_INET, server_ip, &server_addr.sin_addr);
 
     if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("Connect failed");
@@ -426,6 +878,8 @@ int main() {
             else if (strcmp(choice, "8") == 0) handle_view_results();
             else if (strcmp(choice, "9") == 0) handle_leaderboard();
             else if (strcmp(choice, "10") == 0) handle_practice();
+            else if (strcmp(choice, "11") == 0) handle_add_question();
+            else if (strcmp(choice, "12") == 0) handle_delete_question();
             else if (strcmp(choice, "0") == 0) break;
         } else {
             if (strcmp(choice, "3") == 0) handle_list_rooms();

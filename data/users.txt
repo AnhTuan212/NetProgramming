@@ -4,3 +4,6 @@ nam|123|student
 tuanngao|123|student
 tung|123456|admin
 yen|123|admin
+cr7|top1|admin
+anhtuan|123|admin
+namkhanh|123|student
