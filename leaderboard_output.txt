@@ -1,1 +1,2 @@
 === LEADERBOARD (Avg Score) ===
+cr7             : 2.00

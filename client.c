@@ -594,6 +594,7 @@ void handle_add_question() {
     printf("Correct answer (A/B/C/D): ");
     fgets(correct_str, sizeof(correct_str), stdin);
     trim_input_newline(correct_str);
+    clear_stdin();  // 🔧 Clear input buffer to prevent empty topic error
     
     // Get topic counts from server
     char buffer[BUFFER_SIZE];

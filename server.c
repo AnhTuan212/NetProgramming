@@ -47,6 +47,7 @@ typedef struct {
 typedef struct {
     int sock;
     char username[64];
+    int user_id;           // 🔧 Track user ID for question creator logging
     int loggedIn;
     char role[32];
 } Client;
@@ -230,6 +231,7 @@ void* handle_client(void *arg) {
             if (validate_user(user, pass, role)) {
                 strcpy(cli->username, user);
                 strcpy(cli->role, role);
+                cli->user_id = db_get_user_id(user);  // 🔧 Get user ID from database
                 cli->loggedIn = 1;
                 char msg[128];
                 sprintf(msg, "SUCCESS %s", role);
@@ -612,18 +614,43 @@ void* handle_client(void *arg) {
                     if (new_id < 0) {
                         send_msg(cli->sock, "FAIL Could not add question to file");
                     } else {
+                        // 🔧 Log 1: File write success
+                        char log_msg[512];
+                        sprintf(log_msg, "Admin %s added question ID %d to file: %s/%s", 
+                                cli->username, new_id, new_q.topic, new_q.difficulty);
+                        writeLog(log_msg);
+                        
                         // Reload practice questions
                         practiceQuestionCount = loadQuestionsTxt("data/questions.txt", practiceQuestions, MAX_Q, NULL, NULL);
                         
-                        char msg[256];
-                        sprintf(msg, "SUCCESS Question added with ID %d", new_id);
-                        send_msg(cli->sock, msg);
+                        // 🔧 Add to database with case normalization
+                        int db_result = db_add_question(text, A, B, C, D, correct_str[0], 
+                                                       topic, difficulty, cli->user_id);
                         
-                        // Log
-                        char log_msg[512];
-                        sprintf(log_msg, "Admin %s added question ID %d to %s/%s", 
-                                cli->username, new_id, new_q.topic, new_q.difficulty);
-                        writeLog(log_msg);
+                        if (db_result > 0) {
+                            // 🔧 Log 2: Database insert success
+                            sprintf(log_msg, "Database: Question %d synced to database by admin %s", 
+                                   new_id, cli->username);
+                            writeLog(log_msg);
+                            
+                            char msg[256];
+                            sprintf(msg, "SUCCESS Question added with ID %d", new_id);
+                            send_msg(cli->sock, msg);
+                        } else {
+                            // 🔧 Log 2: Database insert failure
+                            if (db_result == -2) {
+                                sprintf(log_msg, "Database error: Question %d file-only, invalid difficulty '%s' by admin %s", 
+                                       new_id, difficulty, cli->username);
+                            } else {
+                                sprintf(log_msg, "Database error: Question %d file-only, insert failed by admin %s", 
+                                       new_id, cli->username);
+                            }
+                            writeLog(log_msg);
+                            
+                            char msg[256];
+                            sprintf(msg, "PARTIAL Question %d saved to file but database sync failed (see logs)", new_id);
+                            send_msg(cli->sock, msg);
+                        }
                     }
                 }
             }
@@ -754,6 +781,15 @@ int main() {
         printf("Performing initial data migration from text files...\n");
         migrate_from_text_files(DATA_DIR);
         verify_migration();
+    }
+    
+    // 🔧 Sync any additional questions from file to database (for consistency)
+    int synced = db_sync_questions_from_file("data/questions.txt");
+    if (synced > 0) {
+        printf("Synced %d questions from file to database\n", synced);
+        char log_msg[256];
+        sprintf(log_msg, "Server startup: Synced %d questions from file to database", synced);
+        writeLog(log_msg);
     }
     
     // Gọi hàm writeLog từ logger.c

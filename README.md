@@ -199,7 +199,7 @@ Commands Handled:
   PRACTICE - random question from practice bank
   GET_TOPICS - enumerate topics from questions.txt
   GET_DIFFICULTIES - count by difficulty
-  ADD_QUESTION - question_bank.c::add_question_to_file()
+  ADD_QUESTION - question_bank.c::add_question_to_file() + db_queries.c::db_add_question()
   SEARCH_QUESTIONS - question_bank.c search functions
   DELETE_QUESTION - question_bank.c::delete_question_by_id()
 ```
@@ -231,6 +231,7 @@ typedef struct {
 typedef struct {
     int sock;
     char username[64];
+    int user_id;           // 🔧 Track question creator for audit logging
     int loggedIn;
     char role[32];
 } Client;
@@ -245,19 +246,28 @@ typedef struct {
 - `loadQuestionsWithFilters()` - Advanced filtering by topic AND difficulty
 - `get_all_topics_with_counts()` - Enumerate unique topics
 - `get_all_difficulties_with_counts()` - Count by difficulty level
-- `add_question_to_file()` - Append new question with auto-increment ID
+- `add_question_to_file()` - Append new question with auto-increment ID, normalizes topic/difficulty to lowercase
 - `delete_question_by_id()` - Find and remove question
 - `search_questions_by_id/topic/difficulty()` - Query operations
 - `shuffle_questions()` - Fisher-Yates randomization
 - `remove_duplicate_questions()` - Deduplication by ID
 
-**Data Storage:**
+**Data Storage & Synchronization:**
 ```
 File Format: data/questions.txt
 ─────────────────────────────────
 ID|Text|OptionA|OptionB|OptionC|OptionD|Correct|Topic|Difficulty
 1|What is 2+2?|3|4|5|6|B|math|easy
 2|Capital of France?|London|Paris|Berlin|Rome|B|geography|easy
+
+Question Creation Flow (via ADD_QUESTION command):
+  1. Client sends: ADD_QUESTION <text>|<A>|<B>|<C>|<D>|<correct>|<topic>|<difficulty>
+  2. Server validates format and content
+  3. add_question_to_file() saves to data/questions.txt (with lowercase normalization)
+  4. db_add_question() inserts into SQLite with auto-topic creation if new
+  5. Both file and DB operations are logged to data/logs.txt
+  6. db_sync_questions_from_file() ensures consistency during server startup
+```
 ```
 
 #### 4. **User Manager Module** (`user_manager.c`, 50 lines)

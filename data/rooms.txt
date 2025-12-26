@@ -48,3 +48,7 @@ khanhancut4|cr7|3|300|1
 Q|Which loop repeats until condition is false?|for|while|do-while|if|C|Programming|Easy
 Q|What is the capital of France?|Berlin|Paris|Madrid|Rome|B|Geography|Easy
 Q|What is 10/3 in integer division in C?|3.33|3|4|0|B|Programming|Easy
+7hkem10|cr7|3|50|1
+Q|Which loop repeats until condition is false?|for|while|do-while|if|C|Programming|Easy
+Q|What is the capital of France?|Berlin|Paris|Madrid|Rome|B|Geography|Easy
+Q|What is 10/3 in integer division in C?|3.33|3|4|0|B|Programming|Easy

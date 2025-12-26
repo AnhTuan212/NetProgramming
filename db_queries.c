@@ -4,6 +4,32 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+
+// ==================== USER MANAGEMENT ====================
+
+// 🔧 Get user ID by username from database
+int db_get_user_id(const char *username) {
+    if (!username || !db) return -1;
+    
+    sqlite3_stmt *stmt;
+    const char *query = "SELECT id FROM users WHERE username = ?";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Error preparing query: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    
+    sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+    int user_id = -1;
+    
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        user_id = sqlite3_column_int(stmt, 0);
+    }
+    
+    sqlite3_finalize(stmt);
+    return user_id;
+}
 
 // ==================== QUESTIONS ====================
 
@@ -13,32 +39,61 @@ int db_add_question(const char *text, const char *opt_a, const char *opt_b,
                    const char *topic, const char *difficulty, int created_by_id) {
     sqlite3_stmt *stmt;
     
-    // Get topic ID
+    // 🔧 Normalize topic and difficulty to lowercase
+    char topic_lower[64], difficulty_lower[32];
+    strcpy(topic_lower, topic);
+    strcpy(difficulty_lower, difficulty);
+    
+    // Convert to lowercase
+    for (int i = 0; topic_lower[i]; i++) {
+        topic_lower[i] = tolower(topic_lower[i]);
+    }
+    for (int i = 0; difficulty_lower[i]; i++) {
+        difficulty_lower[i] = tolower(difficulty_lower[i]);
+    }
+    
+    // Get topic ID (case-insensitive lookup)
     int topic_id = 0;
-    const char *topic_query = "SELECT id FROM topics WHERE name = ?";
+    const char *topic_query = "SELECT id FROM topics WHERE LOWER(name) = LOWER(?)";
     if (sqlite3_prepare_v2(db, topic_query, -1, &stmt, NULL) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, topic, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 1, topic_lower, -1, SQLITE_STATIC);
         if (sqlite3_step(stmt) == SQLITE_ROW) {
             topic_id = sqlite3_column_int(stmt, 0);
         }
         sqlite3_finalize(stmt);
     }
     
-    // Get difficulty ID
+    // 🔧 Auto-create topic if not found
+    if (topic_id == 0) {
+        const char *insert_topic_query = "INSERT INTO topics (name) VALUES (?)";
+        if (sqlite3_prepare_v2(db, insert_topic_query, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, topic_lower, -1, SQLITE_STATIC);
+            if (sqlite3_step(stmt) == SQLITE_DONE) {
+                topic_id = (int)sqlite3_last_insert_rowid(db);
+            }
+            sqlite3_finalize(stmt);
+        }
+        
+        if (topic_id == 0) {
+            fprintf(stderr, "Error: failed to create topic '%s'\n", topic_lower);
+            return -1;
+        }
+    }
+    
+    // Get difficulty ID (strict validation - no auto-creation)
     int difficulty_id = 0;
-    const char *diff_query = "SELECT id FROM difficulties WHERE name = ?";
+    const char *diff_query = "SELECT id FROM difficulties WHERE LOWER(name) = LOWER(?)";
     if (sqlite3_prepare_v2(db, diff_query, -1, &stmt, NULL) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, difficulty, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 1, difficulty_lower, -1, SQLITE_STATIC);
         if (sqlite3_step(stmt) == SQLITE_ROW) {
             difficulty_id = sqlite3_column_int(stmt, 0);
         }
         sqlite3_finalize(stmt);
     }
     
-    if (topic_id == 0 || difficulty_id == 0) {
-        fprintf(stderr, "Error: topic or difficulty not found (topic='%s' id=%d, diff='%s' id=%d)\n", 
-                topic, topic_id, difficulty, difficulty_id);
-        return -1;
+    if (difficulty_id == 0) {
+        fprintf(stderr, "Error: invalid difficulty '%s' (must be easy, medium, or hard)\n", difficulty_lower);
+        return -2;  // Return -2 for invalid difficulty
     }
     
     // Insert the question
@@ -61,7 +116,7 @@ int db_add_question(const char *text, const char *opt_a, const char *opt_b,
     sqlite3_bind_int(stmt, 7, topic_id);
     sqlite3_bind_int(stmt, 8, difficulty_id);
     
-    // Bind created_by - use NULL if not specified (id = 0)
+    // Bind created_by - use NULL if not specified (id = -1 or 0)
     if (created_by_id > 0) {
         sqlite3_bind_int(stmt, 9, created_by_id);
     } else {
@@ -77,6 +132,62 @@ int db_add_question(const char *text, const char *opt_a, const char *opt_b,
     }
     
     return (int)sqlite3_last_insert_rowid(db);
+}
+
+// 🔧 Sync questions from text file to database
+int db_sync_questions_from_file(const char *filename) {
+    if (!filename || !db) return 0;
+    
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        fprintf(stderr, "Error: could not open %s for sync\n", filename);
+        return 0;
+    }
+    
+    int synced_count = 0;
+    char line[1024];
+    
+    while (fgets(line, sizeof(line), fp)) {
+        line[strcspn(line, "\n")] = 0;
+        if (strlen(line) < 10) continue;
+        
+        // Parse: ID|text|A|B|C|D|correct|topic|difficulty
+        int id;
+        char text[256], A[128], B[128], C[128], D[128];
+        char correct_str[2], topic[64], difficulty[32];
+        
+        int parsed = sscanf(line, "%d|%255[^|]|%127[^|]|%127[^|]|%127[^|]|%127[^|]|%1[^|]|%63[^|]|%31s",
+                           &id, text, A, B, C, D, correct_str, topic, difficulty);
+        
+        if (parsed != 9) continue;
+        
+        // Check if question already exists in database
+        sqlite3_stmt *stmt;
+        const char *check_query = "SELECT id FROM questions WHERE id = ?";
+        int exists = 0;
+        
+        if (sqlite3_prepare_v2(db, check_query, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, id);
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                exists = 1;
+            }
+            sqlite3_finalize(stmt);
+        }
+        
+        if (!exists) {
+            // Sync this question to database
+            int result = db_add_question(text, A, B, C, D, correct_str[0], topic, difficulty, -1);
+            if (result > 0) {
+                synced_count++;
+                fprintf(stderr, "Synced question ID %d from file to database\n", id);
+            } else {
+                fprintf(stderr, "Failed to sync question ID %d from file\n", id);
+            }
+        }
+    }
+    
+    fclose(fp);
+    return synced_count;
 }
 
 // Get question by ID

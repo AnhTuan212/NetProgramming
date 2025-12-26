@@ -71,3 +71,15 @@
 2025-12-25 09:27:35 - Admin cr7 created room hahalmao with 5 questions
 2025-12-25 09:29:05 - Admin cr7 added question ID 7 to Tuan/hard
 2025-12-25 09:29:16 - Admin cr7 deleted question ID 7 (tuan dep trai so 1 the gioi)
+2025-12-26 11:23:02 - SERVER_STARTED
+2025-12-26 11:27:54 - SERVER_STARTED
+2025-12-26 11:29:05 - Admin cr7 created room 7hkem10 with 3 questions
+2025-12-26 11:32:12 - Admin cr7 added question ID 7 to Football/hard
+2025-12-26 11:32:38 - Admin cr7 deleted question ID 7 (7 h kem 10 dk)
+2025-12-26 11:36:03 - Admin cr7 added question ID 7 to football/hard
+2025-12-26 11:43:02 - SERVER_STARTED
+2025-12-26 11:44:39 - Admin cr7 added question ID 8 to Football/medium
+2025-12-26 13:11:17 - Server startup: Synced 2 questions from file to database
+2025-12-26 13:11:17 - SERVER_STARTED
+2025-12-26 13:11:57 - Admin cr7 added question ID 9 to file: Ok/hard
+2025-12-26 13:11:57 - Database: Question 9 synced to database by admin cr7
