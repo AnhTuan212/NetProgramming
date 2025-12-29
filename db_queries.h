@@ -12,6 +12,8 @@ typedef struct {
     char correct_option;
     int topic_id;
     int difficulty_id;
+    char topic[64];           // Added: topic name
+    char difficulty[32];      // Added: difficulty name
 } DBQuestion;
 
 typedef struct {
@@ -48,6 +50,8 @@ int db_create_room(const char *name, int owner_id, int duration_minutes);
 int db_add_question_to_room(int room_id, int question_id, int order_num);
 int db_get_room_questions(int room_id, DBQuestion *questions, int max_count);
 int db_get_room(int room_id, DBRoom *room);
+int db_get_room_id_by_name(const char *room_name);  // 🔧 Get room ID for deletion
+int db_delete_room(int room_id);  // 🔧 Delete room from database
 
 // ==================== PARTICIPANTS & ANSWERS ====================
 int db_add_participant(int room_id, int user_id);
@@ -60,4 +64,8 @@ int db_get_leaderboard(int room_id, char *output, int max_size);
 // ==================== LOGS ====================
 int db_add_log(int user_id, const char *event_type, const char *description);
 
+// ==================== MAINTENANCE ====================
+int db_renumber_questions(void);
+
 #endif // DB_QUERIES_H
+

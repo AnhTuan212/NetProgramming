@@ -83,3 +83,117 @@
 2025-12-26 13:11:17 - SERVER_STARTED
 2025-12-26 13:11:57 - Admin cr7 added question ID 9 to file: Ok/hard
 2025-12-26 13:11:57 - Database: Question 9 synced to database by admin cr7
+2025-12-29 21:37:54 - SERVER_STARTED
+2025-12-29 22:23:10 - SERVER_STARTED
+2025-12-29 22:24:03 - SERVER_STARTED
+2025-12-29 22:33:31 - SERVER_STARTED
+2025-12-29 22:34:01 - SERVER_STARTED
+2025-12-29 22:37:54 - SERVER_STARTED
+2025-12-29 22:38:12 - SERVER_STARTED
+2025-12-29 22:38:48 - Admin cr7 created room tuandeptrai with 5 questions
+2025-12-29 22:39:49 - User cr7 submitted answers in room tuandeptrai: 1/5
+2025-12-29 22:40:36 - Admin cr7 added question ID 10 to file: Ok/easy
+2025-12-29 22:40:36 - Database: Question 10 synced to database by admin cr7
+2025-12-29 22:41:26 - Admin cr7 deleted question ID 10 (tuan dep traia haha)
+2025-12-29 22:50:44 - SERVER_STARTED
+2025-12-29 22:51:07 - Register failed for admin ovl (Wrong Code)
+2025-12-29 22:53:45 - User okla registered as admin.
+2025-12-29 23:29:44 - SERVER_STARTED
+2025-12-29 23:29:57 - SERVER_STARTED
+2025-12-29 23:30:06 - User testuser registered as student in database
+2025-12-29 23:32:51 - SERVER_STARTED
+2025-12-29 23:34:15 - User cr7 registered as admin in database
+2025-12-29 23:34:30 - User cr7 logged in as admin
+2025-12-29 23:35:14 - Admin cr7 added question ID 1 to file: Ok/easy
+2025-12-29 23:35:14 - Database: Question 1 synced to database by admin cr7
+2025-12-29 23:35:30 - Admin cr7 added question ID 3 to file: Ok/hard
+2025-12-29 23:35:30 - Database: Question 3 synced to database by admin cr7
+2025-12-29 23:35:53 - Admin cr7 added question ID 5 to file: tuan/easy
+2025-12-29 23:35:53 - Database: Question 5 synced to database by admin cr7
+2025-12-29 23:36:48 - Admin cr7 created room tuandeptrai with 5 questions
+2025-12-29 23:37:56 - User cr7 submitted answers in room tuandeptrai: 1/5
+2025-12-29 23:38:35 - Admin cr7 deleted question ID 4 (tuan dep trai vai l)
+2025-12-29 23:48:38 - SERVER_STARTED
+2025-12-29 23:48:53 - SERVER_STARTED
+2025-12-29 23:51:32 - SERVER_STARTED
+2025-12-29 23:51:42 - User cr logged in as student
+2025-12-29 23:51:55 - User lmao logged in as student
+2025-12-29 23:52:52 - User cr7 logged in as student
+2025-12-29 23:53:12 - User cr7 registered as admin in database
+2025-12-29 23:53:19 - User cr7 logged in as admin
+2025-12-29 23:55:35 - Admin cr7 added question ID 1 to database: Ok/easy
+2025-12-29 23:55:51 - Admin cr7 added question ID 2 to database: Ok/hard
+2025-12-29 23:56:06 - Admin cr7 added question ID 3 to database: tuan/easy
+2025-12-29 23:56:19 - Admin cr7 added question ID 4 to database: ok/easy
+2025-12-29 23:56:53 - Admin cr7 deleted question ID 4 (hahaahahaha)
+2025-12-29 23:57:09 - Admin cr7 added question ID 5 to database: ok/easy
+2025-12-29 23:58:04 - Admin cr7 created room tuandeptrai with 3 questions
+2025-12-29 23:58:57 - User cr7 submitted answers in room tuandeptrai: 0/3
+2025-12-30 00:05:28 - SERVER_STARTED
+2025-12-30 00:06:24 - SERVER_STARTED
+2025-12-30 00:06:49 - SERVER_STARTED
+2025-12-30 00:07:18 - SERVER_STARTED
+2025-12-30 00:07:57 - SERVER_STARTED
+2025-12-30 00:08:55 - Register failed for admin cr (Wrong Code)
+2025-12-30 00:09:07 - User cr7 registered as admin in database
+2025-12-30 00:09:30 - User messi registered as student in database
+2025-12-30 00:09:45 - User lmao logged in as student
+2025-12-30 00:10:33 - User cr7 logged in as admin
+2025-12-30 00:11:19 - Admin cr7 added question ID 4 to database: ok/easy
+2025-12-30 00:11:41 - Admin cr7 added question ID 5 to database: ok/easy
+2025-12-30 00:11:50 - Admin cr7 deleted question ID 3 (What is 4+4?)
+2025-12-30 00:12:11 - Admin cr7 added question ID 6 to database: maath/easy
+2025-12-30 00:13:36 - Admin cr7 created room tuandeptraai with 2 questions
+2025-12-30 00:15:31 - User cr7 submitted answers in room tuandeptraai: 1/2
+2025-12-30 00:18:01 - SERVER_STARTED
+2025-12-30 00:18:49 - Login failed for user lmao
+2025-12-30 00:18:57 - User cr7 logged in as admin
+2025-12-30 00:19:16 - Admin cr7 added question ID 7 to database: khanh/easy
+2025-12-30 00:19:43 - Admin cr7 deleted question ID 4 (tuan dep trai vl)
+2025-12-30 00:20:07 - SERVER_STARTED
+2025-12-30 00:20:23 - Login failed for user nonexistent
+2025-12-30 00:20:28 - Login failed for user nonexistent
+2025-12-30 00:20:33 - Login failed for user testuser
+2025-12-30 00:23:34 - SERVER_STARTED
+2025-12-30 00:25:00 - SERVER_STARTED
+2025-12-30 00:25:19 - User admin logged in as admin
+2025-12-30 00:25:20 - Admin admin deleted question ID 2 (Q2)
+2025-12-30 00:25:25 - User admin logged in as admin
+2025-12-30 00:25:49 - SERVER_STARTED
+2025-12-30 00:42:53 - SERVER_STARTED
+2025-12-30 00:43:04 - Login failed for user lmaao
+2025-12-30 00:43:11 - Login failed for user cr
+2025-12-30 00:43:23 - User cr7 registered as admin in database
+2025-12-30 00:43:31 - Login failed for user cr
+2025-12-30 00:43:36 - User cr7 logged in as admin
+2025-12-30 00:43:49 - Admin cr7 added question ID 5 to database: ok/easy
+2025-12-30 00:45:58 - User cr7 logged in as admin
+2025-12-30 00:46:21 - Admin cr7 added question ID 6 to database: tuan/easy
+2025-12-30 00:46:53 - Admin cr7 created room tuandeptrai with 3 questions
+2025-12-30 00:47:11 - User cr7 submitted answers in room tuandeptrai: 1/3
+2025-12-30 00:52:38 - SERVER_STARTED
+2025-12-30 00:52:49 - Login failed for user lmao
+2025-12-30 00:52:52 - Login failed for user cr
+2025-12-30 00:53:33 - User cr7 registered as admin in database
+2025-12-30 00:53:47 - Login failed for user cr77
+2025-12-30 00:53:51 - User cr7 logged in as admin
+2025-12-30 00:57:04 - SERVER_STARTED
+2025-12-30 00:58:53 - SERVER_STARTED
+2025-12-30 00:59:00 - SERVER_STARTED
+2025-12-30 00:59:24 - SERVER_STARTED
+2025-12-30 00:59:38 - User cr7 logged in as admin
+2025-12-30 01:00:17 - Admin cr7 created room tuandeptrai with 2 questions
+2025-12-30 01:00:32 - Admin cr7 added question ID 4 to database: tuan/easy
+2025-12-30 01:00:41 - Admin cr7 deleted question ID 1 (Test)
+2025-12-30 01:01:00 - Admin cr7 added question ID 5 to database: tuan/hard
+2025-12-30 01:01:56 - Admin cr7 created room tuandeptrai1 with 2 questions
+2025-12-30 01:03:53 - SERVER_STARTED
+2025-12-30 01:04:01 - User cr7 logged in as admin
+2025-12-30 01:04:23 - Admin cr7 created room tuandeptrai2 with 2 questions
+2025-12-30 01:04:36 - User cr7 submitted answers in room tuandeptrai2: 1/2
+2025-12-30 01:04:55 - Admin cr7 added question ID 6 to database: tuan/hard
+2025-12-30 01:05:02 - Admin cr7 deleted question ID 4 (tuan dep trai vl)
+2025-12-30 01:05:15 - Admin cr7 added question ID 7 to database: khanh/easy
+2025-12-30 01:05:58 - User khanh registered as student in database
+2025-12-30 01:06:03 - User khanh logged in as student
+2025-12-30 01:06:19 - User khanh submitted answers in room tuandeptrai2: 1/2

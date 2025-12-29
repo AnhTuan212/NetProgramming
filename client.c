@@ -162,71 +162,115 @@ void handle_create_room() {
     if (strncmp(buffer, "SUCCESS", 7) == 0) {
         char *topicData = buffer + 8;
         
-        // Parse topics with counts and display interactively
+        // Parse topics with counts from format: Topic1(count)|Topic2(count)|...
         char topics_copy[512];
         strcpy(topics_copy, topicData);
         
-        // Extract individual topics (format: Topic1(count)|Topic2(count)|...)
+        // Extract individual topics
         char *topic_list[32];
+        int topic_counts[32];
         int topic_count = 0;
-        char *start = topics_copy;
-        char *end;
+        char *saveptr;
+        char *token = strtok_r(topics_copy, "|", &saveptr);
         
-        while ((end = strchr(start, '|')) != NULL && topic_count < 32) {
-            int len = end - start;
-            topic_list[topic_count] = malloc(len + 1);
-            strncpy(topic_list[topic_count], start, len);
-            topic_list[topic_count][len] = '\0';
-            topic_count++;
-            start = end + 1;
+        while (token && topic_count < 32) {
+            // Parse format: "Topic(count)"
+            char *paren = strchr(token, '(');
+            if (paren) {
+                // Extract topic name
+                int name_len = paren - token;
+                topic_list[topic_count] = malloc(name_len + 1);
+                strncpy(topic_list[topic_count], token, name_len);
+                topic_list[topic_count][name_len] = '\0';
+                
+                // Extract count from (count)
+                topic_counts[topic_count] = atoi(paren + 1);
+                topic_count++;
+            }
+            token = strtok_r(NULL, "|", &saveptr);
         }
         
-        // Display each topic and collect input line by line
-        printf("\nEnter number of questions to take from each topic:\n");
-        printf("(Press Enter to skip a topic, or enter 0 to skip)\n\n");
+        // Display available topics
+        if (topic_count > 0) {
+            printf("\nAvailable topics:\n");
+            for (int i = 0; i < topic_count; i++) {
+                printf("  - %s (%d questions)\n", topic_list[i], topic_counts[i]);
+            }
+        }
         
-        for (int i = 0; i < topic_count; i++) {
-            printf("%s: ", topic_list[i]);
-            char input[32];
+        printf("\nEnter topics to select (format: topic_name:count_wanted)\n");
+        printf("Example: programming:5 geography:3 math:2\n");
+        printf("Enter '#' when done.\n\n");
+        
+        // Interactive loop for topic selection
+        while (1) {
+            printf("Topic selection: ");
+            fflush(stdout);
+            char input[128];
             fgets(input, sizeof(input), stdin);
             trim_input_newline(input);
             
-            int count = 0;
-            if (strlen(input) > 0) {
-                count = atoi(input);
+            if (strcmp(input, "#") == 0) {
+                break;
             }
             
-            // Only add to selection if count > 0
-            if (count > 0) {
-                char topic_name[64];
-                strcpy(topic_name, topic_list[i]);
+            if (strlen(input) > 0) {
+                // Convert input to lowercase
+                for (int j = 0; input[j]; j++) {
+                    input[j] = tolower(input[j]);
+                }
                 
-                // Extract just the topic name (remove the count in parentheses)
-                char *paren = strchr(topic_name, '(');
-                if (paren) *paren = '\0';
-                
-                // Convert to lowercase for consistency
-                for (int j = 0; topic_name[j]; j++) {
-                    topic_name[j] = tolower(topic_name[j]);
+                // Validate and add to selection
+                char *colon = strchr(input, ':');
+                if (colon) {
+                    int wanted = atoi(colon + 1);
+                    if (wanted > 0) {
+                        if (strlen(topic_selection) > 0) {
+                            strcat(topic_selection, " ");
+                        }
+                        strcat(topic_selection, input);
+                    } else {
+                        printf("  Invalid count (must be > 0)\n");
+                    }
+                } else {
+                    printf("  Invalid format. Use: topic_name:count\n");
+                }
+            }
+        }
+        
+        // Free allocated memory
+        for (int i = 0; i < topic_count; i++) {
+            free(topic_list[i]);
+        }
+    } else {
+        printf("\nEnter topics to select (format: topic_name:count_wanted)\n");
+        printf("Example: programming:5 geography:3 math:2\n");
+        printf("Enter '#' when done.\n\n");
+        
+        // Interactive loop for manual topic entry
+        while (1) {
+            printf("Topic selection: ");
+            fflush(stdout);
+            char input[128];
+            fgets(input, sizeof(input), stdin);
+            trim_input_newline(input);
+            
+            if (strcmp(input, "#") == 0) {
+                break;
+            }
+            
+            if (strlen(input) > 0) {
+                // Convert to lowercase
+                for (int j = 0; input[j]; j++) {
+                    input[j] = tolower(input[j]);
                 }
                 
                 if (strlen(topic_selection) > 0) {
                     strcat(topic_selection, " ");
                 }
-                char topic_entry[128];
-                snprintf(topic_entry, sizeof(topic_entry), "%s:%d", topic_name, count);
-                strcat(topic_selection, topic_entry);
+                strcat(topic_selection, input);
             }
-            
-            free(topic_list[i]);
         }
-    } else {
-        printf("Available topics: Programming, Geography, Math, Art\n");
-        printf("Enter topics and question count (format: topic_name:count)\n");
-        printf("Example: programming:5 geography:3 math:2\n");
-        printf("Or press Enter to use all available topics equally:\n");
-        fgets(topic_selection, sizeof(topic_selection), stdin);
-        trim_input_newline(topic_selection);
     }
     
     // Get difficulty counts from server
@@ -240,71 +284,115 @@ void handle_create_room() {
     if (strncmp(buffer, "SUCCESS", 7) == 0) {
         char *diffData = buffer + 8;
         
-        // Parse difficulties with counts and display interactively
+        // Parse difficulties with counts from format: Difficulty1(count)|Difficulty2(count)|...
         char diff_copy[512];
         strcpy(diff_copy, diffData);
         
-        // Extract individual difficulties (format: Easy(count)|Medium(count)|Hard(count)|)
+        // Extract individual difficulties
         char *diff_list[10];
+        int diff_counts[10];
         int diff_count = 0;
-        char *start = diff_copy;
-        char *end;
+        char *saveptr;
+        char *token = strtok_r(diff_copy, "|", &saveptr);
         
-        while ((end = strchr(start, '|')) != NULL && diff_count < 10) {
-            int len = end - start;
-            diff_list[diff_count] = malloc(len + 1);
-            strncpy(diff_list[diff_count], start, len);
-            diff_list[diff_count][len] = '\0';
-            diff_count++;
-            start = end + 1;
+        while (token && diff_count < 10) {
+            // Parse format: "Difficulty(count)"
+            char *paren = strchr(token, '(');
+            if (paren) {
+                // Extract difficulty name
+                int name_len = paren - token;
+                diff_list[diff_count] = malloc(name_len + 1);
+                strncpy(diff_list[diff_count], token, name_len);
+                diff_list[diff_count][name_len] = '\0';
+                
+                // Extract count from (count)
+                diff_counts[diff_count] = atoi(paren + 1);
+                diff_count++;
+            }
+            token = strtok_r(NULL, "|", &saveptr);
         }
         
-        // Display each difficulty and collect input line by line
-        printf("\nEnter number of questions for each difficulty:\n");
-        printf("(Press Enter to skip a difficulty, or enter 0 to skip)\n\n");
+        // Display available difficulties
+        if (diff_count > 0) {
+            printf("\nAvailable difficulties:\n");
+            for (int i = 0; i < diff_count; i++) {
+                printf("  - %s (%d questions)\n", diff_list[i], diff_counts[i]);
+            }
+        }
         
-        for (int i = 0; i < diff_count; i++) {
-            printf("%s: ", diff_list[i]);
-            char input[32];
+        printf("\nEnter difficulties to select (format: difficulty_name:count_wanted)\n");
+        printf("Example: easy:3 medium:4 hard:2\n");
+        printf("Enter '#' when done.\n\n");
+        
+        // Interactive loop for difficulty selection
+        while (1) {
+            printf("Difficulty selection: ");
+            fflush(stdout);
+            char input[128];
             fgets(input, sizeof(input), stdin);
             trim_input_newline(input);
             
-            int count = 0;
-            if (strlen(input) > 0) {
-                count = atoi(input);
+            if (strcmp(input, "#") == 0) {
+                break;
             }
             
-            // Only add to selection if count > 0
-            if (count > 0) {
-                char diff_name[64];
-                strcpy(diff_name, diff_list[i]);
+            if (strlen(input) > 0) {
+                // Convert input to lowercase
+                for (int j = 0; input[j]; j++) {
+                    input[j] = tolower(input[j]);
+                }
                 
-                // Extract just the difficulty name (remove the count in parentheses)
-                char *paren = strchr(diff_name, '(');
-                if (paren) *paren = '\0';
-                
-                // Convert to lowercase for consistency
-                for (int j = 0; diff_name[j]; j++) {
-                    diff_name[j] = tolower(diff_name[j]);
+                // Validate and add to selection
+                char *colon = strchr(input, ':');
+                if (colon) {
+                    int wanted = atoi(colon + 1);
+                    if (wanted > 0) {
+                        if (strlen(difficulty_selection) > 0) {
+                            strcat(difficulty_selection, " ");
+                        }
+                        strcat(difficulty_selection, input);
+                    } else {
+                        printf("  Invalid count (must be > 0)\n");
+                    }
+                } else {
+                    printf("  Invalid format. Use: difficulty_name:count\n");
+                }
+            }
+        }
+        
+        // Free allocated memory
+        for (int i = 0; i < diff_count; i++) {
+            free(diff_list[i]);
+        }
+    } else {
+        printf("\nEnter difficulties to select (format: difficulty_name:count_wanted)\n");
+        printf("Example: easy:3 medium:4 hard:2\n");
+        printf("Enter '#' when done.\n\n");
+        
+        // Interactive loop for manual difficulty entry
+        while (1) {
+            printf("Difficulty selection: ");
+            fflush(stdout);
+            char input[128];
+            fgets(input, sizeof(input), stdin);
+            trim_input_newline(input);
+            
+            if (strcmp(input, "#") == 0) {
+                break;
+            }
+            
+            if (strlen(input) > 0) {
+                // Convert to lowercase
+                for (int j = 0; input[j]; j++) {
+                    input[j] = tolower(input[j]);
                 }
                 
                 if (strlen(difficulty_selection) > 0) {
                     strcat(difficulty_selection, " ");
                 }
-                char diff_entry[128];
-                snprintf(diff_entry, sizeof(diff_entry), "%s:%d", diff_name, count);
-                strcat(difficulty_selection, diff_entry);
+                strcat(difficulty_selection, input);
             }
-            
-            free(diff_list[i]);
         }
-    } else {
-        printf("Available difficulties: Easy, Medium, Hard\n");
-        printf("Enter difficulties and question count (format: difficulty_name:count)\n");
-        printf("Example: easy:3 medium:4 hard:2\n");
-        printf("Or press Enter to use all difficulties equally:\n");
-        fgets(difficulty_selection, sizeof(difficulty_selection), stdin);
-        trim_input_newline(difficulty_selection);
     }
     
     char cmd[1024];
@@ -319,7 +407,11 @@ void handle_create_room() {
     
     send_message(cmd);
     recv_message(buffer, sizeof(buffer));
-    printf("%s\n", buffer);
+    if (strncmp(buffer, "SUCCESS", 7) == 0) {
+        printf("\nRoom created successfully!\n");
+    } else {
+        printf("\nError: %s\n", buffer);
+    }
 }
 
 void handle_list_rooms() {

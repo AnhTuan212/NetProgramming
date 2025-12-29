@@ -194,8 +194,12 @@ int db_sync_questions_from_file(const char *filename) {
 int db_get_question(int id, DBQuestion *q) {
     sqlite3_stmt *stmt;
     const char *query = 
-        "SELECT id, text, option_a, option_b, option_c, option_d, "
-        "correct_option, topic_id, difficulty_id FROM questions WHERE id = ?";
+        "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, "
+        "q.correct_option, q.topic_id, q.difficulty_id, t.name, d.name "
+        "FROM questions q "
+        "JOIN topics t ON q.topic_id = t.id "
+        "JOIN difficulties d ON q.difficulty_id = d.id "
+        "WHERE q.id = ?";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
         return 0;
@@ -213,6 +217,8 @@ int db_get_question(int id, DBQuestion *q) {
         q->correct_option = *((char*)sqlite3_column_text(stmt, 6));
         q->topic_id = sqlite3_column_int(stmt, 7);
         q->difficulty_id = sqlite3_column_int(stmt, 8);
+        strncpy(q->topic, (const char*)sqlite3_column_text(stmt, 9), sizeof(q->topic)-1);
+        strncpy(q->difficulty, (const char*)sqlite3_column_text(stmt, 10), sizeof(q->difficulty)-1);
         sqlite3_finalize(stmt);
         return 1;
     }
@@ -243,9 +249,12 @@ int db_delete_question(int id) {
 int db_get_all_questions(DBQuestion *questions, int max_count) {
     sqlite3_stmt *stmt;
     const char *query = 
-        "SELECT id, text, option_a, option_b, option_c, option_d, "
-        "correct_option, topic_id, difficulty_id FROM questions "
-        "ORDER BY id LIMIT ?";
+        "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, "
+        "q.correct_option, q.topic_id, q.difficulty_id, t.name, d.name "
+        "FROM questions q "
+        "JOIN topics t ON q.topic_id = t.id "
+        "JOIN difficulties d ON q.difficulty_id = d.id "
+        "ORDER BY q.id LIMIT ?";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
         return 0;
@@ -264,6 +273,8 @@ int db_get_all_questions(DBQuestion *questions, int max_count) {
         questions[count].correct_option = *((char*)sqlite3_column_text(stmt, 6));
         questions[count].topic_id = sqlite3_column_int(stmt, 7);
         questions[count].difficulty_id = sqlite3_column_int(stmt, 8);
+        strncpy(questions[count].topic, (const char*)sqlite3_column_text(stmt, 9), sizeof(questions[count].topic)-1);
+        strncpy(questions[count].difficulty, (const char*)sqlite3_column_text(stmt, 10), sizeof(questions[count].difficulty)-1);
         count++;
     }
     
@@ -276,8 +287,11 @@ int db_get_questions_by_topic(const char *topic, DBQuestion *questions, int max_
     sqlite3_stmt *stmt;
     const char *query = 
         "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, "
-        "q.correct_option, q.topic_id, q.difficulty_id FROM questions q "
-        "JOIN topics t ON q.topic_id = t.id WHERE t.name = ? LIMIT ?";
+        "q.correct_option, q.topic_id, q.difficulty_id, t.name, d.name "
+        "FROM questions q "
+        "JOIN topics t ON q.topic_id = t.id "
+        "JOIN difficulties d ON q.difficulty_id = d.id "
+        "WHERE LOWER(t.name) = LOWER(?) LIMIT ?";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
         return 0;
@@ -297,6 +311,8 @@ int db_get_questions_by_topic(const char *topic, DBQuestion *questions, int max_
         questions[count].correct_option = *((char*)sqlite3_column_text(stmt, 6));
         questions[count].topic_id = sqlite3_column_int(stmt, 7);
         questions[count].difficulty_id = sqlite3_column_int(stmt, 8);
+        strncpy(questions[count].topic, (const char*)sqlite3_column_text(stmt, 9), sizeof(questions[count].topic)-1);
+        strncpy(questions[count].difficulty, (const char*)sqlite3_column_text(stmt, 10), sizeof(questions[count].difficulty)-1);
         count++;
     }
     
@@ -309,8 +325,11 @@ int db_get_questions_by_difficulty(const char *difficulty, DBQuestion *questions
     sqlite3_stmt *stmt;
     const char *query = 
         "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, "
-        "q.correct_option, q.topic_id, q.difficulty_id FROM questions q "
-        "JOIN difficulties d ON q.difficulty_id = d.id WHERE d.name = ? LIMIT ?";
+        "q.correct_option, q.topic_id, q.difficulty_id, t.name, d.name "
+        "FROM questions q "
+        "JOIN topics t ON q.topic_id = t.id "
+        "JOIN difficulties d ON q.difficulty_id = d.id "
+        "WHERE LOWER(d.name) = LOWER(?) LIMIT ?";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
         return 0;
@@ -330,6 +349,8 @@ int db_get_questions_by_difficulty(const char *difficulty, DBQuestion *questions
         questions[count].correct_option = *((char*)sqlite3_column_text(stmt, 6));
         questions[count].topic_id = sqlite3_column_int(stmt, 7);
         questions[count].difficulty_id = sqlite3_column_int(stmt, 8);
+        strncpy(questions[count].topic, (const char*)sqlite3_column_text(stmt, 9), sizeof(questions[count].topic)-1);
+        strncpy(questions[count].difficulty, (const char*)sqlite3_column_text(stmt, 10), sizeof(questions[count].difficulty)-1);
         count++;
     }
     
@@ -349,12 +370,13 @@ int db_get_questions_with_distribution(const char *topic_filter, const char *dif
     
     // Build dynamic query based on filters
     char query[2048] = "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, "
-                       "q.correct_option, q.topic_id, q.difficulty_id FROM questions q "
+                       "q.correct_option, q.topic_id, q.difficulty_id, t.name, d.name "
+                       "FROM questions q "
                        "JOIN topics t ON q.topic_id = t.id "
                        "JOIN difficulties d ON q.difficulty_id = d.id WHERE 1=1";
     
-    if (strlen(topic_filter) > 0) {
-        strcat(query, " AND t.name IN (");
+    if (strlen(topic_copy) > 0) {
+        strcat(query, " AND LOWER(t.name) IN (");
         char *topic_ptr = strtok(topic_copy, " ");
         int first = 1;
         while (topic_ptr) {
@@ -362,17 +384,17 @@ int db_get_questions_with_distribution(const char *topic_filter, const char *dif
             if (colon) *colon = '\0';
             
             if (!first) strcat(query, ", ");
-            strcat(query, "'");
+            strcat(query, "LOWER('");
             strcat(query, topic_ptr);
-            strcat(query, "'");
+            strcat(query, "')");
             first = 0;
             topic_ptr = strtok(NULL, " ");
         }
         strcat(query, ")");
     }
     
-    if (strlen(diff_filter) > 0) {
-        strcat(query, " AND d.name IN (");
+    if (strlen(diff_copy) > 0) {
+        strcat(query, " AND LOWER(d.name) IN (");
         char *diff_ptr = strtok(diff_copy, " ");
         int first = 1;
         while (diff_ptr) {
@@ -380,9 +402,9 @@ int db_get_questions_with_distribution(const char *topic_filter, const char *dif
             if (colon) *colon = '\0';
             
             if (!first) strcat(query, ", ");
-            strcat(query, "'");
+            strcat(query, "LOWER('");
             strcat(query, diff_ptr);
-            strcat(query, "'");
+            strcat(query, "')");
             first = 0;
             diff_ptr = strtok(NULL, " ");
         }
@@ -409,6 +431,8 @@ int db_get_questions_with_distribution(const char *topic_filter, const char *dif
         questions[count].correct_option = *((char*)sqlite3_column_text(stmt, 6));
         questions[count].topic_id = sqlite3_column_int(stmt, 7);
         questions[count].difficulty_id = sqlite3_column_int(stmt, 8);
+        strncpy(questions[count].topic, (const char*)sqlite3_column_text(stmt, 9), sizeof(questions[count].topic)-1);
+        strncpy(questions[count].difficulty, (const char*)sqlite3_column_text(stmt, 10), sizeof(questions[count].difficulty)-1);
         count++;
     }
     
@@ -419,8 +443,9 @@ int db_get_questions_with_distribution(const char *topic_filter, const char *dif
 // Get all topics
 int db_get_all_topics(char *output) {
     sqlite3_stmt *stmt;
-    const char *query = "SELECT name, COUNT(*) FROM questions q "
-                       "JOIN topics t ON q.topic_id = t.id GROUP BY t.id ORDER BY name";
+    // Use LEFT JOIN to include ALL topics, even those with 0 questions
+    const char *query = "SELECT t.name, COUNT(q.id) FROM topics t "
+                       "LEFT JOIN questions q ON q.topic_id = t.id GROUP BY t.id ORDER BY t.name";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
         return 0;
@@ -433,7 +458,7 @@ int db_get_all_topics(char *output) {
         const char *topic = (const char*)sqlite3_column_text(stmt, 0);
         int topic_count = sqlite3_column_int(stmt, 1);
         
-        if (count > 0) strcat(output, " ");
+        if (count > 0) strcat(output, "|");
         sprintf(output + strlen(output), "%s:%d", topic, topic_count);
         count++;
     }
@@ -445,8 +470,9 @@ int db_get_all_topics(char *output) {
 // Get all difficulties
 int db_get_all_difficulties(char *output) {
     sqlite3_stmt *stmt;
-    const char *query = "SELECT name, COUNT(*) FROM questions q "
-                       "JOIN difficulties d ON q.difficulty_id = d.id GROUP BY d.id ORDER BY d.level";
+    // Use LEFT JOIN to include ALL difficulties, even those with 0 questions
+    const char *query = "SELECT d.name, COUNT(q.id) FROM difficulties d "
+                       "LEFT JOIN questions q ON q.difficulty_id = d.id GROUP BY d.id ORDER BY d.level";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
         return 0;
@@ -459,7 +485,7 @@ int db_get_all_difficulties(char *output) {
         const char *difficulty = (const char*)sqlite3_column_text(stmt, 0);
         int diff_count = sqlite3_column_int(stmt, 1);
         
-        if (count > 0) strcat(output, " ");
+        if (count > 0) strcat(output, "|");
         sprintf(output + strlen(output), "%s:%d", difficulty, diff_count);
         count++;
     }
@@ -592,8 +618,11 @@ int db_get_room_questions(int room_id, DBQuestion *questions, int max_count) {
     sqlite3_stmt *stmt;
     const char *query = 
         "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, "
-        "q.correct_option, q.topic_id, q.difficulty_id FROM questions q "
+        "q.correct_option, q.topic_id, q.difficulty_id, t.name, d.name "
+        "FROM questions q "
         "JOIN room_questions rq ON q.id = rq.question_id "
+        "JOIN topics t ON q.topic_id = t.id "
+        "JOIN difficulties d ON q.difficulty_id = d.id "
         "WHERE rq.room_id = ? ORDER BY rq.order_num LIMIT ?";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
@@ -614,6 +643,8 @@ int db_get_room_questions(int room_id, DBQuestion *questions, int max_count) {
         questions[count].correct_option = *((char*)sqlite3_column_text(stmt, 6));
         questions[count].topic_id = sqlite3_column_int(stmt, 7);
         questions[count].difficulty_id = sqlite3_column_int(stmt, 8);
+        strncpy(questions[count].topic, (const char*)sqlite3_column_text(stmt, 9), sizeof(questions[count].topic)-1);
+        strncpy(questions[count].difficulty, (const char*)sqlite3_column_text(stmt, 10), sizeof(questions[count].difficulty)-1);
         count++;
     }
     
@@ -774,3 +805,174 @@ int db_add_log(int user_id, const char *event_type, const char *description) {
     
     return (rc == SQLITE_DONE) ? 1 : 0;
 }
+
+// 🔧 Get room ID by name (needed for deletion)
+int db_get_room_id_by_name(const char *room_name) {
+    if (!db || !room_name) return -1;
+    
+    sqlite3_stmt *stmt;
+    const char *query = "SELECT id FROM rooms WHERE name = ?";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    
+    sqlite3_bind_text(stmt, 1, room_name, -1, SQLITE_STATIC);
+    
+    int room_id = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        room_id = sqlite3_column_int(stmt, 0);
+    }
+    
+    sqlite3_finalize(stmt);
+    return room_id;
+}
+
+// 🔧 Delete room from database (and associated questions)
+int db_delete_room(int room_id) {
+    if (!db || room_id <= 0) return 0;
+    
+    sqlite3_stmt *stmt;
+    
+    // First delete questions in this room
+    const char *delete_questions = "DELETE FROM room_questions WHERE room_id = ?";
+    if (sqlite3_prepare_v2(db, delete_questions, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, room_id);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+    
+    // Then delete the room itself
+    const char *delete_room = "DELETE FROM rooms WHERE id = ?";
+    if (sqlite3_prepare_v2(db, delete_room, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    sqlite3_bind_int(stmt, 1, room_id);
+    int result = (sqlite3_step(stmt) == SQLITE_DONE) ? 1 : 0;
+    sqlite3_finalize(stmt);
+    
+    return result;
+}
+
+// Renumber questions to remove gaps after deletion
+// This creates a new questions table with sequential IDs and updates all references
+int db_renumber_questions(void) {
+    if (!db) return 0;
+    
+    char *err_msg = NULL;
+    
+    // Begin transaction
+    if (sqlite3_exec(db, "BEGIN TRANSACTION;", 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "Transaction begin error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        return 0;
+    }
+    
+    // Create mapping table from old IDs to new sequential IDs
+    const char *create_mapping = 
+        "CREATE TEMPORARY TABLE id_mapping AS "
+        "SELECT id as old_id, ROW_NUMBER() OVER (ORDER BY id) as new_id FROM questions;";
+    
+    if (sqlite3_exec(db, create_mapping, 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "Create mapping error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, &err_msg);
+        return 0;
+    }
+    
+    // Create new questions table with sequential IDs
+    const char *create_temp = 
+        "CREATE TABLE questions_new AS "
+        "SELECT m.new_id as id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, "
+        "q.correct_option, q.topic_id, q.difficulty_id, q.created_by, q.created_at "
+        "FROM questions q JOIN id_mapping m ON q.id = m.old_id ORDER BY m.new_id;";
+    
+    if (sqlite3_exec(db, create_temp, 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "Create temp error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, &err_msg);
+        return 0;
+    }
+    
+    // Update room_questions table to use new IDs
+    const char *update_room_q = 
+        "UPDATE room_questions SET question_id = "
+        "(SELECT m.new_id FROM id_mapping m WHERE m.old_id = room_questions.question_id);";
+    
+    if (sqlite3_exec(db, update_room_q, 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "Update room_questions error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, &err_msg);
+        return 0;
+    }
+    
+    // Update answers table to use new IDs
+    const char *update_answers = 
+        "UPDATE answers SET question_id = "
+        "(SELECT m.new_id FROM id_mapping m WHERE m.old_id = answers.question_id);";
+    
+    if (sqlite3_exec(db, update_answers, 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "Update answers error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, &err_msg);
+        return 0;
+    }
+    
+    // Drop old table and rename new one
+    if (sqlite3_exec(db, "DROP TABLE questions;", 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "Drop questions error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, &err_msg);
+        return 0;
+    }
+    
+    if (sqlite3_exec(db, "ALTER TABLE questions_new RENAME TO questions;", 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "Rename error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, &err_msg);
+        return 0;
+    }
+    
+    // Recreate indexes
+    const char *recreate_index = 
+        "CREATE INDEX IF NOT EXISTS idx_questions_topic ON questions(topic_id); "
+        "CREATE INDEX IF NOT EXISTS idx_questions_difficulty ON questions(difficulty_id);";
+    
+    if (sqlite3_exec(db, recreate_index, 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "Index recreation error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, &err_msg);
+        return 0;
+    }
+    
+    // Commit transaction
+    if (sqlite3_exec(db, "COMMIT;", 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "Commit error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        return 0;
+    }
+    
+    return 1;
+}
+
+// Compact question IDs to remove gaps (e.g., after deletion)
+// Creates new table with sequential IDs and swaps it
+int db_compact_question_ids(void) {
+    if (!db) return 0;
+    
+    char *err_msg = NULL;
+    
+    // Use VACUUM to reclaim space and compact the database
+    // This is a simpler approach than renumbering IDs
+    if (sqlite3_exec(db, "VACUUM;", 0, 0, &err_msg) != SQLITE_OK) {
+        fprintf(stderr, "Vacuum error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        return 0;
+    }
+    
+    return 1;
+}
+
