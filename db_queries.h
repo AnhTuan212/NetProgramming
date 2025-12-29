@@ -1,6 +1,9 @@
 #ifndef DB_QUERIES_H
 #define DB_QUERIES_H
 
+#include <sqlite3.h>
+#include "common.h"
+
 // Database structures
 typedef struct {
     int id;
@@ -36,6 +39,7 @@ int db_get_questions_with_distribution(const char *topic_filter, const char *dif
                                        DBQuestion *questions, int max_count);
 int db_get_all_topics(char *output);
 int db_get_all_difficulties(char *output);
+int search_questions_by_id(int id, QItem *q);
 
 // ==================== USERS ====================
 int db_add_user(const char *username, const char *password, const char *role);
@@ -48,6 +52,9 @@ int db_create_room(const char *name, int owner_id, int duration_minutes);
 int db_add_question_to_room(int room_id, int question_id, int order_num);
 int db_get_room_questions(int room_id, DBQuestion *questions, int max_count);
 int db_get_room(int room_id, DBRoom *room);
+int db_get_room_by_name(const char *name, DBRoom *room);
+int db_delete_room(int room_id);
+int db_list_all_rooms(DBRoom *rooms, int max_count);
 
 // ==================== PARTICIPANTS & ANSWERS ====================
 int db_add_participant(int room_id, int user_id);
@@ -55,7 +62,7 @@ int db_record_answer(int participant_id, int question_id, char selected_option, 
 
 // ==================== RESULTS ====================
 int db_add_result(int participant_id, int room_id, int score, int total, int correct);
-int db_get_leaderboard(int room_id, char *output, int max_size);
+int db_get_results_by_room(int room_id, char *output, int max_size);
 
 // ==================== LOGS ====================
 int db_add_log(int user_id, const char *event_type, const char *description);

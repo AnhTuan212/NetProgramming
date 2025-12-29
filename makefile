@@ -1,34 +1,31 @@
-# --- Compiler ---
 CC       := gcc
 CFLAGS   := -std=c11 -Wall -Wextra -pthread -g
-LDFLAGS  := -pthread -lsqlite3
+LDFLAGS  := -pthread -lsqlite3 -lm
 
-# --- Sources ---
-SERVER_SRCS := server.c user_manager.c question_bank.c logger.c db_init.c db_queries.c db_migration.c
+SERVER_SRCS := server.c user_manager.c question_bank.c logger.c db_init.c db_queries.c db_migration.c stats.c
 CLIENT_SRCS := client.c
-STATS_OBJ   := stats.o
 
 SERVER_OBJS := $(SERVER_SRCS:.c=.o)
 CLIENT_OBJS := $(CLIENT_SRCS:.c=.o)
 
-# --- Targets ---
 all: server client
 
-server: $(SERVER_OBJS) $(STATS_OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+server: $(SERVER_OBJS)
+	$(CC) -o $@ $^ $(LDFLAGS)
 
 client: $(CLIENT_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) -o $@ $^ $(LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-data_dir:
-	mkdir -p data
-
 clean:
-	rm -f *.o server client
+	rm -f *.o server client leaderboard_output.txt
+
+cleanup-data:
+	rm -f data/questions.txt data/rooms.txt data/results.txt data/users.txt
+	@echo "✓ Text files removed (keeping logs.txt for audit trail)"
 
 rebuild: clean all
 
-.PHONY: all clean rebuild data_dir
+.PHONY: all clean rebuild cleanup-data

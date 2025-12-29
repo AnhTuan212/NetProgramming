@@ -80,55 +80,70 @@ int migrate_questions(const char *questions_file) {
         fprintf(stderr, "Error opening questions file for migration\n");
         return 0;
     }
-    
+
     char line[1024];
     int questions_added = 0;
     int questions_failed = 0;
-    
+
     while (fgets(line, sizeof(line), f)) {
         line[strcspn(line, "\n")] = 0;
-        if (strlen(line) == 0) continue;
-        
-        // Format: id|text|A|B|C|D|correct|topic|difficulty
+        if (strlen(line) < 10) continue;
+
         char *parts[9];
         char line_copy[1024];
         strcpy(line_copy, line);
         
         char *ptr = strtok(line_copy, "|");
         int idx = 0;
-        
+
         while (ptr && idx < 9) {
             parts[idx++] = ptr;
             ptr = strtok(NULL, "|");
         }
-        
+
         if (idx < 9) continue;
-        
-        // Extract fields
-        const char *text = parts[1];
-        const char *opt_a = parts[2];
-        const char *opt_b = parts[3];
-        const char *opt_c = parts[4];
-        const char *opt_d = parts[5];
-        char correct = parts[6][0];
-        const char *topic_raw = parts[7];
-        const char *difficulty_raw = parts[8];
-        
-        // Convert topic to lowercase
-        char topic[64];
-        strcpy(topic, topic_raw);
+
+        char text[256], opt_a[128], opt_b[128], opt_c[128], opt_d[128];
+        char topic[64], difficulty[32];
+        char correct = 'A';
+
+        strncpy(text, parts[1], sizeof(text) - 1);
+        strncpy(opt_a, parts[2], sizeof(opt_a) - 1);
+        strncpy(opt_b, parts[3], sizeof(opt_b) - 1);
+        strncpy(opt_c, parts[4], sizeof(opt_c) - 1);
+        strncpy(opt_d, parts[5], sizeof(opt_d) - 1);
+        correct = toupper(parts[6][0]);
+        strncpy(topic, parts[7], sizeof(topic) - 1);
+        strncpy(difficulty, parts[8], sizeof(difficulty) - 1);
+
+        // ✅ FIX: Normalize both to lowercase
         for (int i = 0; topic[i]; i++) {
             topic[i] = tolower((unsigned char)topic[i]);
         }
-        
-        // Convert difficulty to lowercase
-        char difficulty[32];
-        strcpy(difficulty, difficulty_raw);
         for (int i = 0; difficulty[i]; i++) {
             difficulty[i] = tolower((unsigned char)difficulty[i]);
         }
+
+        // Verify difficulty exists
+        sqlite3_stmt *diff_stmt;
+        const char *get_diff_query = "SELECT id FROM difficulties WHERE LOWER(name) = ?";
         
-        // Insert question with no creator (NULL)
+        int difficulty_id = -1;
+        if (sqlite3_prepare_v2(db, get_diff_query, -1, &diff_stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(diff_stmt, 1, difficulty, -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(diff_stmt) == SQLITE_ROW) {
+                difficulty_id = sqlite3_column_int(diff_stmt, 0);
+            }
+            sqlite3_finalize(diff_stmt);
+        }
+
+        if (difficulty_id == -1) {
+            fprintf(stderr, "Warning: Difficulty '%s' not found, skipping: %s\n", 
+                    difficulty, text);
+            questions_failed++;
+            continue;
+        }
+
         int q_id = db_add_question(text, opt_a, opt_b, opt_c, opt_d, correct, topic, difficulty, 0);
         
         if (q_id > 0) {
@@ -137,10 +152,10 @@ int migrate_questions(const char *questions_file) {
             questions_failed++;
         }
     }
-    
+
     fclose(f);
     printf("✓ Migrated %d questions (%d failed)\n", questions_added, questions_failed);
-    return 1;
+    return questions_added;
 }
 
 // Migrate users from users.txt to database

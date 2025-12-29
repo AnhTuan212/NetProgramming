@@ -156,7 +156,7 @@ int db_sync_questions_from_file(const char *filename) {
         char text[256], A[128], B[128], C[128], D[128];
         char correct_str[2], topic[64], difficulty[32];
         
-        int parsed = sscanf(line, "%d|%255[^|]|%127[^|]|%127[^|]|%127[^|]|%127[^|]|%1[^|]|%63[^|]|%31s",
+        int parsed = sscanf(line, "%d|%255[^|]|%127[^|]|%127[^|]|%127[^|]|%127[^|]|%127[^|]|%1[^|]|%63[^|]|%31s",
                            &id, text, A, B, C, D, correct_str, topic, difficulty);
         
         if (parsed != 9) continue;
@@ -696,11 +696,12 @@ int db_record_answer(int participant_id, int question_id, char selected_option, 
 int db_add_result(int participant_id, int room_id, int score, int total, int correct) {
     sqlite3_stmt *stmt;
     const char *query = 
-        "INSERT INTO results (participant_id, room_id, score, total_questions, correct_answers) "
-        "VALUES (?, ?, ?, ?, ?)";
+        "INSERT INTO results (participant_id, room_id, score, total_questions, correct_answers, submitted_at) "
+        "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        return -1;
+        fprintf(stderr, "Error preparing statement: %s\n", sqlite3_errmsg(db));
+        return 0;
     }
     
     sqlite3_bind_int(stmt, 1, participant_id);
@@ -712,7 +713,7 @@ int db_add_result(int participant_id, int room_id, int score, int total, int cor
     int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     
-    return (rc == SQLITE_DONE) ? (int)sqlite3_last_insert_rowid(db) : -1;
+    return (rc == SQLITE_DONE) ? 1 : 0;
 }
 
 // Get leaderboard for room
@@ -773,4 +774,125 @@ int db_add_log(int user_id, const char *event_type, const char *description) {
     sqlite3_finalize(stmt);
     
     return (rc == SQLITE_DONE) ? 1 : 0;
+}
+
+// ✅ ADD THIS FUNCTION:
+int search_questions_by_id(int id, QItem *q) {
+    if (!q || !db) return 0;
+    
+    sqlite3_stmt *stmt;
+    const char *query = 
+        "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option, t.name, d.name "
+        "FROM questions q "
+        "JOIN topics t ON q.topic_id = t.id "
+        "JOIN difficulties d ON q.difficulty_id = d.id "
+        "WHERE q.id = ?";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        return 0;
+    }
+    
+    sqlite3_bind_int(stmt, 1, id);
+    
+    int found = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        q->id = sqlite3_column_int(stmt, 0);
+        strncpy(q->text, (const char*)sqlite3_column_text(stmt, 1), sizeof(q->text)-1);
+        q->text[sizeof(q->text)-1] = '\0';
+        strncpy(q->A, (const char*)sqlite3_column_text(stmt, 2), sizeof(q->A)-1);
+        q->A[sizeof(q->A)-1] = '\0';
+        strncpy(q->B, (const char*)sqlite3_column_text(stmt, 3), sizeof(q->B)-1);
+        q->B[sizeof(q->B)-1] = '\0';
+        strncpy(q->C, (const char*)sqlite3_column_text(stmt, 4), sizeof(q->C)-1);
+        q->C[sizeof(q->C)-1] = '\0';
+        strncpy(q->D, (const char*)sqlite3_column_text(stmt, 5), sizeof(q->D)-1);
+        q->D[sizeof(q->D)-1] = '\0';
+        q->correct = *((char*)sqlite3_column_text(stmt, 6));
+        strncpy(q->topic, (const char*)sqlite3_column_text(stmt, 7), sizeof(q->topic)-1);
+        q->topic[sizeof(q->topic)-1] = '\0';
+        strncpy(q->difficulty, (const char*)sqlite3_column_text(stmt, 8), sizeof(q->difficulty)-1);
+        q->difficulty[sizeof(q->difficulty)-1] = '\0';
+        found = 1;
+    }
+    
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+// ✅ ADD THIS:
+int search_questions_by_topic(const char *topic, char *output) {
+    if (!topic || !output || !db) return -1;
+    
+    sqlite3_stmt *stmt;
+    const char *query = 
+        "SELECT id, text, option_a, option_b, option_c, option_d, correct_option, topic, difficulty "
+        "FROM questions WHERE LOWER(topic) = LOWER(?)";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+    
+    sqlite3_bind_text(stmt, 1, topic, -1, SQLITE_STATIC);
+    
+    output[0] = '\0';
+    int count = 0;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < 100) {
+        if (count > 0) strcat(output, "\n");
+        
+        int id = sqlite3_column_int(stmt, 0);
+        const char *text = (const char*)sqlite3_column_text(stmt, 1);
+        const char *opt_a = (const char*)sqlite3_column_text(stmt, 2);
+        const char *opt_b = (const char*)sqlite3_column_text(stmt, 3);
+        const char *opt_c = (const char*)sqlite3_column_text(stmt, 4);
+        const char *opt_d = (const char*)sqlite3_column_text(stmt, 5);
+        const char *correct = (const char*)sqlite3_column_text(stmt, 6);
+        
+        char buf[512];
+        snprintf(buf, sizeof(buf), "%d|%s|%s|%s|%s|%s|%s", id, text, opt_a, opt_b, opt_c, opt_d, correct);
+        strcat(output, buf);
+        count++;
+    }
+    
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+// ✅ ADD THIS:
+int search_questions_by_difficulty(const char *difficulty, char *output) {
+    if (!difficulty || !output || !db) return -1;
+    
+    sqlite3_stmt *stmt;
+    const char *query = 
+        "SELECT id, text, option_a, option_b, option_c, option_d, correct_option, topic, difficulty "
+        "FROM questions WHERE LOWER(difficulty) = LOWER(?)";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        return -1;
+    }
+    
+    sqlite3_bind_text(stmt, 1, difficulty, -1, SQLITE_STATIC);
+    
+    output[0] = '\0';
+    int count = 0;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < 100) {
+        if (count > 0) strcat(output, "\n");
+        
+        int id = sqlite3_column_int(stmt, 0);
+        const char *text = (const char*)sqlite3_column_text(stmt, 1);
+        const char *opt_a = (const char*)sqlite3_column_text(stmt, 2);
+        const char *opt_b = (const char*)sqlite3_column_text(stmt, 3);
+        const char *opt_c = (const char*)sqlite3_column_text(stmt, 4);
+        const char *opt_d = (const char*)sqlite3_column_text(stmt, 5);
+        const char *correct = (const char*)sqlite3_column_text(stmt, 6);
+        
+        char buf[512];
+        snprintf(buf, sizeof(buf), "%d|%s|%s|%s|%s|%s|%s", id, text, opt_a, opt_b, opt_c, opt_d, correct);
+        strcat(output, buf);
+        count++;
+    }
+    
+    sqlite3_finalize(stmt);
+    return count;
 }

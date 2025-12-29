@@ -83,3 +83,157 @@
 2025-12-26 13:11:17 - SERVER_STARTED
 2025-12-26 13:11:57 - Admin cr7 added question ID 9 to file: Ok/hard
 2025-12-26 13:11:57 - Database: Question 9 synced to database by admin cr7
+2025-12-26 14:34:50 - SERVER_STARTED
+2025-12-26 14:37:20 - Admin cr7 added question ID 10 to file: Ok/hard
+2025-12-26 14:37:20 - Database: Question 10 synced to database by admin cr7
+2025-12-29 13:13:35 - SERVER_STARTED
+2025-12-29 13:15:28 - Admin messi created room test_1 with 3 questions
+2025-12-29 13:17:47 - Admin messi added question ID 11 to file: Math/easy
+2025-12-29 13:17:47 - Database: Question 11 synced to database by admin messi
+2025-12-29 13:18:55 - Admin messi added question ID 12 to file: Ok/hard
+2025-12-29 13:18:55 - Database: Question 12 synced to database by admin messi
+2025-12-29 13:19:36 - Admin messi added question ID 13 to file: Football/hard
+2025-12-29 13:19:36 - Database: Question 13 synced to database by admin messi
+2025-12-29 13:20:42 - SERVER_STARTED
+2025-12-29 13:31:29 - Admin messi created room khanh with 3 questions
+2025-12-29 13:42:09 - SERVER_STARTED
+2025-12-29 13:50:12 - SERVER_STARTED
+2025-12-29 13:51:05 - User admin registered as admin.
+2025-12-29 16:03:59 - SERVER_STARTED
+2025-12-29 16:07:56 - SERVER_STARTED
+2025-12-29 16:10:35 - SERVER_STARTED
+2025-12-29 16:12:26 - SERVER_STARTED
+2025-12-29 16:12:59 - User 20235956 registered as admin
+2025-12-29 16:13:08 - User 20235956 logged in as admin
+2025-12-29 16:24:19 - SERVER_STARTED
+2025-12-29 16:24:54 - User 20235956 logged in as admin
+2025-12-29 16:26:54 - Admin 20235956 created room test_1 with 5 questions
+2025-12-29 16:29:11 - SERVER_STARTED
+2025-12-29 16:29:46 - User 20235956 logged in as admin
+2025-12-29 16:30:32 - Admin 20235956 created room test_1 with 5 questions
+2025-12-29 16:35:29 - SERVER_STARTED
+2025-12-29 16:36:03 - User 20235956 logged in as admin
+2025-12-29 16:41:09 - SERVER_STARTED
+2025-12-29 16:41:19 - User 20235956 logged in as admin
+2025-12-29 16:43:06 - SERVER_STARTED
+2025-12-29 16:43:17 - User 20235956 logged in as admin
+2025-12-29 16:44:43 - SERVER_STARTED
+2025-12-29 16:44:54 - User 20235956 logged in as admin
+2025-12-29 16:48:07 - SERVER_STARTED
+2025-12-29 16:48:19 - User 20235956 logged in as admin
+2025-12-29 16:50:21 - SERVER_STARTED
+2025-12-29 16:51:13 - SERVER_STARTED
+2025-12-29 16:51:23 - SERVER_STARTED
+2025-12-29 16:52:51 - SERVER_STARTED
+2025-12-29 16:53:22 - SERVER_STARTED
+2025-12-29 16:53:37 - User 20235956 logged in as admin
+2025-12-29 16:53:59 - Admin 20235956 created room test_1 with 5 questions
+2025-12-29 16:58:32 - SERVER_STARTED
+2025-12-29 17:00:42 - SERVER_STARTED
+2025-12-29 17:00:53 - User 20235956 logged in as admin
+2025-12-29 17:01:35 - Admin 20235956 created room test_1 with 5 questions
+2025-12-29 17:09:23 - SERVER_STARTED
+2025-12-29 17:09:35 - User 20235956 logged in as admin
+2025-12-29 17:10:10 - Admin 20235956 created room test_1 with 5 questions
+2025-12-29 17:14:49 - SERVER_STARTED
+2025-12-29 17:15:49 - SERVER_STARTED
+2025-12-29 17:16:58 - SERVER_STARTED
+2025-12-29 17:17:09 - SERVER_STARTED
+2025-12-29 17:17:30 - SERVER_STARTED
+2025-12-29 17:18:10 - SERVER_STARTED
+2025-12-29 17:18:29 - User 20235956 logged in as admin
+2025-12-29 17:22:47 - SERVER_STARTED
+2025-12-29 17:22:58 - User 20235956 logged in as admin
+2025-12-29 17:23:34 - Admin 20235956 created room test-1 with 5 questions
+2025-12-29 17:25:01 - User 20236009 registered as student
+2025-12-29 17:25:10 - User 20236009 logged in as student
+2025-12-29 17:25:19 - User 20236009 joined room test-1
+2025-12-29 17:25:35 - User 20236009 joined room test-1
+2025-12-29 17:26:00 - User 20235956 joined room test-1
+2025-12-29 17:27:43 - SERVER_STARTED
+2025-12-29 17:30:59 - SERVER_STARTED
+2025-12-29 17:31:26 - SERVER_STARTED
+2025-12-29 17:32:48 - SERVER_STARTED
+2025-12-29 17:33:44 - SERVER_STARTED
+2025-12-29 17:33:55 - User 20235956 logged in as admin
+2025-12-29 17:34:27 - Admin 20235956 created room test-1 with 5 questions
+2025-12-29 17:35:37 - Admin 20235956 added question ID 31: cloud/easy
+2025-12-29 17:36:36 - Admin 20235956 deleted question ID 31
+2025-12-29 17:36:54 - User 20235956 joined room test-1
+2025-12-29 17:38:35 - SERVER_STARTED
+2025-12-29 17:38:44 - SERVER_STARTED
+2025-12-29 17:38:47 - SERVER_STARTED
+2025-12-29 17:38:56 - SERVER_STARTED
+2025-12-29 17:39:51 - SERVER_STARTED
+2025-12-29 17:40:36 - SERVER_STARTED
+2025-12-29 17:41:35 - SERVER_STARTED
+2025-12-29 17:41:44 - SERVER_STARTED
+2025-12-29 17:43:20 - SERVER_STARTED
+2025-12-29 17:47:18 - SERVER_STARTED
+2025-12-29 17:47:38 - SERVER_STARTED
+2025-12-29 17:48:15 - SERVER_STARTED
+2025-12-29 17:49:13 - SERVER_STARTED
+2025-12-29 17:49:27 - SERVER_STARTED
+2025-12-29 17:50:12 - SERVER_STARTED
+2025-12-29 17:53:50 - SERVER_STARTED
+2025-12-29 17:54:18 - SERVER_STARTED
+2025-12-29 17:54:49 - SERVER_STARTED
+2025-12-29 17:55:18 - SERVER_STARTED
+2025-12-29 17:55:43 - SERVER_STARTED
+2025-12-29 17:56:09 - SERVER_STARTED
+2025-12-29 17:56:33 - SERVER_STARTED
+2025-12-29 17:56:45 - SERVER_STARTED
+2025-12-29 17:56:55 - SERVER_STARTED
+2025-12-29 17:57:20 - SERVER_STARTED
+2025-12-29 17:57:43 - SERVER_STARTED
+2025-12-29 18:08:42 - SERVER_STARTED
+2025-12-29 18:09:56 - SERVER_STARTED
+2025-12-29 18:10:58 - SERVER_STARTED
+2025-12-29 18:12:05 - SERVER_STARTED
+2025-12-29 18:12:18 - SERVER_STARTED
+2025-12-29 18:13:42 - SERVER_STARTED
+2025-12-29 18:14:25 - SERVER_STARTED
+2025-12-29 18:14:31 - User admin logged in as admin
+2025-12-29 18:15:24 - SERVER_STARTED
+2025-12-29 18:15:49 - User admin logged in as admin
+2025-12-29 18:15:53 - Admin admin created room TestRoom1 with 5 questions
+2025-12-29 18:17:17 - User student1 registered as student
+2025-12-29 18:17:18 - User student1 logged in as student
+2025-12-29 18:17:19 - User student1 joined room TestRoom1
+2025-12-29 18:19:01 - SERVER_STARTED
+2025-12-29 18:19:04 - User student1 registered as student
+2025-12-29 18:19:05 - User student1 logged in as student
+2025-12-29 18:19:26 - Register failed for admin admin (Wrong Code)
+2025-12-29 18:19:32 - User student1 logged in as student
+2025-12-29 18:20:34 - SERVER_STARTED
+2025-12-29 18:20:37 - User student1 registered as student
+2025-12-29 18:20:37 - User student1 logged in as student
+2025-12-29 18:20:39 - User student1 logged in as student
+2025-12-29 18:21:12 - SERVER_STARTED
+2025-12-29 18:21:15 - Register failed for admin admin (Wrong Code)
+2025-12-29 18:21:29 - User student1 registered as student
+2025-12-29 18:21:30 - User student1 logged in as student
+2025-12-29 18:24:23 - SERVER_STARTED
+2025-12-29 18:24:26 - Register failed for admin admin (Wrong Code)
+2025-12-29 18:24:41 - User student1 registered as student
+2025-12-29 18:24:41 - User student1 logged in as student
+2025-12-29 18:25:12 - SERVER_STARTED
+2025-12-29 18:25:39 - User student1 registered as student
+2025-12-29 18:25:40 - User student1 logged in as student
+2025-12-29 18:25:41 - User student1 joined room TestRoom
+2025-12-29 18:26:16 - SERVER_STARTED
+2025-12-29 18:26:23 - User student1 registered as student
+2025-12-29 18:26:24 - User student1 logged in as student
+2025-12-29 18:26:25 - User student1 joined room TestRoom
+2025-12-29 18:26:46 - User student1 logged in as student
+2025-12-29 18:26:47 - User student1 joined room TestRoom
+2025-12-29 18:27:25 - User student2 registered as student
+2025-12-29 18:27:25 - User student2 logged in as student
+2025-12-29 18:27:26 - User student2 joined room TestRoom
+2025-12-29 18:29:43 - SERVER_STARTED
+2025-12-29 18:33:50 - SERVER_STARTED
+2025-12-29 18:36:44 - SERVER_STARTED
+2025-12-29 18:38:39 - User 20235956 registered as admin
+2025-12-29 18:38:48 - User 20235956 logged in as admin
+2025-12-29 18:39:07 - Admin 20235956 created room test-1 with 5 questions
+2025-12-29 18:39:52 - User 20235956 joined room test-1

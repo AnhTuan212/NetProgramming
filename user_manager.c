@@ -2,36 +2,40 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include <sqlite3.h>
 
-#define USER_FILE "data/users.txt"
+// ===== REMOVE: register_user_with_role() text file version =====
+
+// ===== ADD: Database-only version =====
 
 int register_user_with_role(const char *username, const char *password, const char *role) {
-    mkdir("data", 0755);
-    if (validate_user(username, password, NULL)) return 0;  // Exists
-
-    FILE *fp = fopen(USER_FILE, "a");
-    if (!fp) return -1;
-    fprintf(fp, "%s|%s|%s\n", username, password, role);  // DÙNG |
-    fclose(fp);
-    return 1;
+    // Check if user already exists
+    if (db_username_exists(username)) {
+        return 0;  // User exists
+    }
+    
+    // Add to database
+    int result = db_add_user(username, password, role);
+    
+    if (result > 0) {
+        return 1;  // Success
+    }
+    
+    return -1;  // Error
 }
 
 int validate_user(const char *username, const char *password, char *role_out) {
-    FILE *fp = fopen(USER_FILE, "r");
-    if (!fp) return 0;
-
-    char line[256];
-    while (fgets(line, sizeof(line), fp)) {
-        char u[64], p[64], r[32] = "student";
-        if (sscanf(line, "%63[^|]|%63[^|]|%31s", u, p, r) == 3) {
-            if (strcmp(u, username) == 0 && strcmp(p, password) == 0) {
-                if (role_out) strcpy(role_out, r);
-                fclose(fp);
-                return 1;
-            }
+    // Query database
+    if (!db_validate_user(username, password)) {
+        return 0;  // Invalid credentials
+    }
+    
+    // Get role
+    if (role_out) {
+        if (!db_get_user_role(username, role_out)) {
+            return 0;
         }
     }
-    fclose(fp);
-    return 0;
+    
+    return 1;  // Valid
 }

@@ -1,18 +1,12 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <strings.h>
+#include <time.h>
 #include <sqlite3.h>
-#include "db_init.h"
-#include "db_queries.h"
-#include "db_migration.h"
+#include <math.h>
 
-#define MAX_QUESTIONS_PER_ROOM 50
 #define DB_PATH "test_system.db"
-#define DATA_DIR "data"
+#define MAX_QUESTIONS_PER_ROOM 50
 
 typedef struct {
     int id;
@@ -26,46 +20,73 @@ typedef struct {
     char difficulty[32];
 } QItem;
 
-// Main question loading function
-int loadQuestionsTxt(const char *filename, QItem *questions, int maxQ,
-                     const char *topic, const char *diff);
+typedef struct {
+    char username[64];
+    int score; 
+    char answers[MAX_QUESTIONS_PER_ROOM];
+    int score_history[10]; 
+    int history_count; 
+    time_t submit_time;
+    time_t start_time;
+} Participant;
 
-// Load questions with topic and difficulty distribution filters
-int loadQuestionsWithFilters(const char *filename, QItem *questions, int maxQ,
-                             const char *topic_filter, const char *diff_filter);
+typedef struct {
+    char name[64];
+    char owner[64];
+    int numQuestions;
+    int duration;
+    QItem questions[MAX_QUESTIONS_PER_ROOM];
+    Participant participants[50];
+    int participantCount;
+    int started;
+    time_t start_time;
+} Room;
 
-// Enumeration functions
-int get_all_topics_with_counts(char *output);
-int get_all_difficulties_with_counts(char *output);
+typedef struct {
+    int sock;
+    char username[64];
+    int user_id;
+    int loggedIn;
+    char role[32];
+} Client;
 
-// Question validation
-int validate_question_input(const QItem *q, char *error_msg);
-
-// Question file operations
-int add_question_to_file(const QItem *q);
-
-// Question search and delete operations
-int search_questions_by_id(int id, QItem *result);
+// Function prototypes
+void writeLog(const char *event);
+int register_user_with_role(const char *username, const char *password, const char *role);
+int validate_user(const char *username, const char *password, char *role_out);
+int db_init(const char *db_path);
+int db_create_tables(void);
+int db_init_default_difficulties(void);
+void db_close(void);
+int db_get_user_id(const char *username);
+int db_add_question(const char *text, const char *A, const char *B, const char *C, const char *D, 
+                    char correct, const char *topic, const char *difficulty, int creator_id);
+int search_questions_by_id(int id, QItem *q);
 int search_questions_by_topic(const char *topic, char *output);
 int search_questions_by_difficulty(const char *difficulty, char *output);
-int delete_question_by_id(int id);
-
-// Deduplication & randomization
-int remove_duplicate_questions(QItem *questions, int *count);
-int shuffle_questions(QItem *questions, int count);
-
-// String utilities
+int migrate_from_text_files(const char *data_dir);
+int verify_migration(void);
+void show_leaderboard(const char *output_file);
+void show_leaderboard_for_room(const char *room_name, const char *output_file);
 void to_lowercase(char *str);
 void to_uppercase(char *str);
+void init_max_question_id(void);
+int get_next_question_id(void);
+int add_question_to_file(const QItem *q);
+int delete_question_by_id(int id);
+int loadQuestionsTxt(const char *filename, QItem *questions, int maxQ,
+                     const char *topic, const char *diff);
+int loadQuestionsWithFilters(const char *filename, QItem *questions, int maxQ,
+                             const char *topic_filter, const char *diff_filter);
+int loadQuestionsWithMultipleFilters(QItem *questions, int maxQ,
+                                      const char *topic_filter, const char *diff_filter);
+int validate_question_input(const QItem *q, char *error_msg);
+int get_all_topics_with_counts(char *output);
+int get_all_difficulties_with_counts(char *output);
+int get_difficulties_for_topics(const char *topic_filter, char *output);
+int loadQuestionsFromDB(QItem *questions, int maxQ,
+                        const char *topic_filter, const char *diff_filter);
+int shuffle_questions(QItem *questions, int count);
+int remove_duplicate_questions(QItem *questions, int *count);
 
-// User management
-void writeLog(const char *event);
-int validate_user(const char *username, const char *password, char *role_out);
-int register_user_with_role(const char *username, const char *password, const char *role);
-int db_get_user_id(const char *username);  // 🔧 Get user ID from database
-int db_sync_questions_from_file(const char *filename);  // 🔧 Sync file questions to database
-
-// Leaderboard
-void show_leaderboard(const char *output_file);
-
-#endif  // COMMON_H
+#endif

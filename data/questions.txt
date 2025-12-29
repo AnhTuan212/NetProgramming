@@ -1,9 +1,0 @@
-1|What is 10/3 in integer division in C?|3.33|3|4|0|B|Programming|Easy
-2|What is the capital of France?|Berlin|Paris|Madrid|Rome|B|Geography|Easy
-3|Which loop repeats until condition is false?|for|while|do-while|if|C|Programming|Easy
-4|What is 2 + 2 * 2?|8|6|4|10|B|Math|Easy
-5|Who painted Mona Lisa?|Picasso|Van Gogh|Da Vinci|Michelangelo|C|Art|Medium
-6|khanh an cut?|chuan|rat chuan|ngon luon|ok|A|khanh|easy
-7|7h kem 10 dung khong|1|2|3|4|A|football|hard
-8|check data co that su luu khong|1|2|3|4|A|football|medium
-9|hahaha khanh lo khanh lo|1|2|3|4|A|ok|hard

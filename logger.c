@@ -10,10 +10,8 @@
 void writeLog(const char *event) {
     if (!event) return;
 
-    struct stat st = {0};
-    if (stat("data", &st) == -1) {
-        mkdir("data", 0700);
-    }
+    // Create data directory if needed
+    mkdir("data", 0755);
 
     FILE *fp = fopen(LOG_FILE, "a");
     if (!fp) return;
