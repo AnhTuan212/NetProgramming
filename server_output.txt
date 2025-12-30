@@ -1,6 +1,0 @@
-Error inserting question: NOT NULL constraint failed: questions.difficulty_id
-Error inserting question: NOT NULL constraint failed: questions.difficulty_id
-Error inserting question: NOT NULL constraint failed: questions.difficulty_id
-Error inserting question: NOT NULL constraint failed: questions.difficulty_id
-Error inserting question: NOT NULL constraint failed: questions.difficulty_id
-Error inserting question: FOREIGN KEY constraint failed

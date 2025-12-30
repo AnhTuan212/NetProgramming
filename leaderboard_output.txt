@@ -1,2 +1,0 @@
-=== LEADERBOARD (Avg Score) ===
-Database leaderboard feature in progress

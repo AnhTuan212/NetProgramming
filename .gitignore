@@ -1,14 +1,32 @@
-# 1. Bỏ qua file object (file trung gian khi biên dịch)
-*.o
-
-# 2. Bỏ qua file thực thi (Executable)
+# Executable binaries
 server
 client
+init_db
+stats
 
-# 3. Bỏ qua cấu hình editor (VS Code,...)
+# Object files
+*.o
+
+# Database files
+*.db
+*.db-journal
+
+# Backup files
+*.bak
+*~
+*.swp
+*.swo
+
+# Logs
+*.log
+data/logs.txt
+
+# Output files
+*_output.txt
+server_output.txt
+leaderboard_output.txt
+
+# IDE
 .vscode/
 .idea/
 *.swp
-
-# 5. File hệ thống
-.DS_Store

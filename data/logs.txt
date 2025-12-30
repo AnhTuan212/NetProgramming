@@ -197,3 +197,21 @@
 2025-12-30 01:05:58 - User khanh registered as student in database
 2025-12-30 01:06:03 - User khanh logged in as student
 2025-12-30 01:06:19 - User khanh submitted answers in room tuandeptrai2: 1/2
+2025-12-30 08:23:11 - SERVER_STARTED
+2025-12-30 08:23:35 - User 20235956 registered as admin in database
+2025-12-30 08:23:42 - User 20235956 logged in as admin
+2025-12-30 08:23:57 - User 20235956 logged in as admin
+2025-12-30 08:25:29 - Admin 20235956 created room test_1 with 5 questions
+2025-12-30 08:26:51 - Admin 20235956 added question ID 8 to database: Mathematics/medium
+2025-12-30 08:27:49 - User 20235956 submitted answers in room test_1: 4/5
+2025-12-30 08:28:35 - SERVER_STARTED
+2025-12-30 08:28:46 - Login failed for user 
+2025-12-30 08:28:54 - User 20236009 registered as student in database
+2025-12-30 08:29:01 - User 20236009 logged in as student
+2025-12-30 08:29:52 - User 20235956 logged in as admin
+2025-12-30 08:31:06 - Admin 20235956 created room test_1 with 5 questions
+2025-12-30 08:39:52 - SERVER_STARTED
+2025-12-30 08:40:10 - Login failed for user 20235956
+2025-12-30 08:40:28 - User 20235956 registered as admin in database
+2025-12-30 08:40:35 - SERVER_STARTED
+2025-12-30 08:40:45 - User 20235956 logged in as admin
