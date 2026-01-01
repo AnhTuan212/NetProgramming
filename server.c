@@ -19,9 +19,8 @@
 #define MAX_Q 200
 #define MAX_ATTEMPTS 10
 
-#define ROOMS_FILE "data/rooms.txt"
-#define RESULTS_FILE "data/results.txt"
-// LOG_FILE được định nghĩa trong logger.c nên không cần define ở đây
+// Note: All data is now persisted in SQLite database (test_system.db)
+// No longer using text files for rooms/results (deprecated)
 
 typedef struct {
     char username[64];
@@ -618,36 +617,25 @@ void* handle_client(void *arg) {
                 ptr++;
             }
             
-            fprintf(stderr, "[DEBUG] ANSWER command - space_count=%d, buffer='%s'\n", space_count, buffer);
-            
             if (space_count == 1) {
                 // Practice mode answer: "ANSWER A" (1 space)
-                fprintf(stderr, "[DEBUG] Practice mode answer detected\n");
                 char *answer_str = strchr(buffer, ' ');
                 if (answer_str == NULL || answer_str[1] == '\0') {
-                    fprintf(stderr, "[DEBUG] Invalid answer format\n");
                     send_msg(cli->sock, "FAIL Invalid answer format");
                 } else {
                     char answer_char = answer_str[1];
                     answer_char = toupper(answer_char);
                     
-                    fprintf(stderr, "[DEBUG] Answer=%c, Correct=%c, Match=%d\n", 
-                            answer_char, cli->current_question_correct, 
-                            (answer_char == cli->current_question_correct));
-                    
                     if (answer_char == cli->current_question_correct) {
-                        fprintf(stderr, "[DEBUG] Sending CORRECT\n");
                         send_msg(cli->sock, "CORRECT");
                     } else {
                         char response[256];
                         snprintf(response, sizeof(response), "WRONG|%c", cli->current_question_correct);
-                        fprintf(stderr, "[DEBUG] Sending WRONG response: %s\n", response);
                         send_msg(cli->sock, response);
                     }
                 }
             } else if (space_count >= 3) {
                 // Test room mode answer: "ANSWER roomname qIdx answer"
-                fprintf(stderr, "[DEBUG] Test room mode answer detected\n");
                 char roomName[64], ansChar;
                 int qIdx;
                 sscanf(buffer, "ANSWER %63s %d %c", roomName, &qIdx, &ansChar);
@@ -661,8 +649,6 @@ void* handle_client(void *arg) {
                         }
                     }
                 }
-            } else {
-                fprintf(stderr, "[DEBUG] Unknown ANSWER format (space_count=%d)\n", space_count);
             }
         }
         else if (strcmp(cmd, "SUBMIT") == 0) {
@@ -953,9 +939,6 @@ void* handle_client(void *arg) {
                                 cli->username, new_id, topic, difficulty);
                         writeLog(log_msg);
                         
-                        // Reload practice questions from database
-                        practiceQuestionCount = loadQuestionsTxt("data/questions.txt", practiceQuestions, MAX_Q, NULL, NULL);
-                        
                         char msg[256];
                         sprintf(msg, "SUCCESS Question added with ID %d", new_id);
                         send_msg(cli->sock, msg);
@@ -1020,13 +1003,8 @@ void* handle_client(void *arg) {
             } else {
                 // Delete the question
                 if (delete_question_by_id(question_id)) {
-                    // Renumber remaining questions to remove gaps
-                    if (!db_renumber_questions()) {
-                        fprintf(stderr, "Warning: Failed to renumber questions\n");
-                    }
-                    
-                    // Reload practice questions
-                    practiceQuestionCount = loadQuestionsTxt("data/questions.txt", practiceQuestions, MAX_Q, NULL, NULL);
+                    // Note: No need to renumber questions anymore since we use auto-increment IDs
+                    // Gaps in IDs are normal and don't cause issues
                     
                     char msg[256];
                     sprintf(msg, "SUCCESS Question ID %d deleted", question_id);
@@ -1100,14 +1078,13 @@ int main() {
     
     printf("Database ready for use\n");
     
-    // Load practice questions from database (not from file)
-    // Use loadQuestionsTxt which converts DBQuestion to QItem format
-    practiceQuestionCount = loadQuestionsTxt("data/questions.txt", practiceQuestions, MAX_Q, NULL, NULL);
-    printf("Loaded %d practice questions from database\n", practiceQuestionCount);
+    // Load practice questions from database
+    // Note: practiceQuestionCount is now managed by database queries
+    // No longer loading from text files - using database directly
     
     writeLog("SERVER_STARTED");
     
-    // Load rooms from database instead of text files
+    // Load rooms from database
     load_rooms();
 
     pthread_t mon_tid;

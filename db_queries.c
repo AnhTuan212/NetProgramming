@@ -168,59 +168,181 @@ int db_add_question(const char *text, const char *opt_a, const char *opt_b,
     return (int)sqlite3_last_insert_rowid(db);
 }
 
+// 🔧 Helper: Insert question with specific ID (for syncing from file)
+// NOTE: This function is not used anymore. We use auto-increment IDs instead.
+// Keeping it for reference/potential future use.
+/*
+static int db_add_question_with_id(int id, const char *text, const char *opt_a, 
+                                   const char *opt_b, const char *opt_c, const char *opt_d, 
+                                   char correct, const char *topic, const char *difficulty) {
+    sqlite3_stmt *stmt;
+    
+    // Normalize topic and difficulty to lowercase
+    char topic_lower[64], difficulty_lower[32];
+    strcpy(topic_lower, topic);
+    strcpy(difficulty_lower, difficulty);
+    
+    for (int i = 0; topic_lower[i]; i++) {
+        topic_lower[i] = tolower(topic_lower[i]);
+    }
+    for (int i = 0; difficulty_lower[i]; i++) {
+        difficulty_lower[i] = tolower(difficulty_lower[i]);
+    }
+    
+    // Get topic ID
+    int topic_id = 0;
+    const char *topic_query = "SELECT id FROM topics WHERE LOWER(name) = LOWER(?)";
+    if (sqlite3_prepare_v2(db, topic_query, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, topic_lower, -1, SQLITE_STATIC);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            topic_id = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+    
+    if (topic_id == 0) {
+        const char *insert_topic_query = "INSERT INTO topics (name) VALUES (?)";
+        if (sqlite3_prepare_v2(db, insert_topic_query, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, topic_lower, -1, SQLITE_STATIC);
+            if (sqlite3_step(stmt) == SQLITE_DONE) {
+                topic_id = (int)sqlite3_last_insert_rowid(db);
+            }
+            sqlite3_finalize(stmt);
+        }
+        
+        if (topic_id == 0) {
+            fprintf(stderr, "Error: failed to create topic '%s'\n", topic_lower);
+            return 0;
+        }
+    }
+    
+    // Get difficulty ID
+    int difficulty_id = 0;
+    const char *diff_query = "SELECT id FROM difficulties WHERE LOWER(name) = LOWER(?)";
+    if (sqlite3_prepare_v2(db, diff_query, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, difficulty_lower, -1, SQLITE_STATIC);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            difficulty_id = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+    
+    if (difficulty_id == 0) {
+        fprintf(stderr, "Error: invalid difficulty '%s'\n", difficulty_lower);
+        return 0;
+    }
+    
+    // Insert with specific ID
+    const char *query = 
+        "INSERT INTO questions (id, text, option_a, option_b, option_c, option_d, "
+        "correct_option, topic_id, difficulty_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Error preparing query: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    sqlite3_bind_int(stmt, 1, id);
+    sqlite3_bind_text(stmt, 2, text, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, opt_a, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, opt_b, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, opt_c, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 6, opt_d, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 7, &correct, 1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 8, topic_id);
+    sqlite3_bind_int(stmt, 9, difficulty_id);
+    
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        fprintf(stderr, "Error inserting question with ID %d: %s\n", id, sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    return id;
+}
+*/
+
 // 🔧 Sync questions from text file to database
 int db_sync_questions_from_file(const char *filename) {
     if (!filename || !db) return 0;
     
     FILE *fp = fopen(filename, "r");
     if (!fp) {
-        fprintf(stderr, "Error: could not open %s for sync\n", filename);
+        fprintf(stderr, "[DB_SYNC] Error: could not open %s for sync\n", filename);
         return 0;
     }
     
-    int synced_count = 0;
+    int synced_count = 0, skipped_count = 0;
     char line[1024];
+    
+    fprintf(stderr, "[DB_SYNC] Starting sync from file: %s\n", filename);
     
     while (fgets(line, sizeof(line), fp)) {
         line[strcspn(line, "\n")] = 0;
         if (strlen(line) < 10) continue;
         
         // Parse: ID|text|A|B|C|D|correct|topic|difficulty
-        int id;
+        int file_id;
         char text[256], A[128], B[128], C[128], D[128];
         char correct_str[2], topic[64], difficulty[32];
         
         int parsed = sscanf(line, "%d|%255[^|]|%127[^|]|%127[^|]|%127[^|]|%127[^|]|%1[^|]|%63[^|]|%31s",
-                           &id, text, A, B, C, D, correct_str, topic, difficulty);
+                           &file_id, text, A, B, C, D, correct_str, topic, difficulty);
         
-        if (parsed != 9) continue;
+        if (parsed != 9) {
+            fprintf(stderr, "[DB_SYNC] Skipping malformed line (parsed %d/9)\n", parsed);
+            skipped_count++;
+            continue;
+        }
         
-        // Check if question already exists in database
+        // Skip if file_id is invalid (0 or negative)
+        if (file_id <= 0) {
+            fprintf(stderr, "[DB_SYNC] ⚠️  Skipping question with invalid ID %d: %.50s\n", file_id, text);
+            skipped_count++;
+            continue;
+        }
+        
+        // Check if question with SAME TEXT already exists (to avoid duplicates)
         sqlite3_stmt *stmt;
-        const char *check_query = "SELECT id FROM questions WHERE id = ?";
+        const char *check_query = "SELECT id FROM questions WHERE text = ?";
         int exists = 0;
+        int existing_id = 0;
         
         if (sqlite3_prepare_v2(db, check_query, -1, &stmt, NULL) == SQLITE_OK) {
-            sqlite3_bind_int(stmt, 1, id);
+            sqlite3_bind_text(stmt, 1, text, -1, SQLITE_TRANSIENT);
             if (sqlite3_step(stmt) == SQLITE_ROW) {
                 exists = 1;
+                existing_id = sqlite3_column_int(stmt, 0);
             }
             sqlite3_finalize(stmt);
         }
         
-        if (!exists) {
-            // Sync this question to database
-            int result = db_add_question(text, A, B, C, D, correct_str[0], topic, difficulty, -1);
-            if (result > 0) {
-                synced_count++;
-                fprintf(stderr, "Synced question ID %d from file to database\n", id);
-            } else {
-                fprintf(stderr, "Failed to sync question ID %d from file\n", id);
-            }
+        if (exists) {
+            fprintf(stderr, "[DB_SYNC] ✓ Question already exists (ID %d): %.50s\n", existing_id, text);
+            skipped_count++;
+            synced_count++;  // Count as synced since it's already in DB
+            continue;
+        }
+        
+        // Question doesn't exist - add it with AUTO-INCREMENT ID (not file_id)
+        // This avoids ID conflicts when server is restarted after adding new questions
+        int new_id = db_add_question(text, A, B, C, D, correct_str[0], topic, difficulty, -1);
+        
+        if (new_id > 0) {
+            synced_count++;
+            fprintf(stderr, "[DB_SYNC] ✓ Added: new ID %d (file had ID %d): %.50s\n", new_id, file_id, text);
+        } else {
+            skipped_count++;
+            fprintf(stderr, "[DB_SYNC] ✗ Failed to add question: %.50s\n", text);
         }
     }
     
     fclose(fp);
+    fprintf(stderr, "[DB_SYNC] Sync complete: %d added, %d skipped (total: %d)\n", 
+            synced_count, skipped_count, synced_count + skipped_count);
     return synced_count;
 }
 
@@ -646,9 +768,12 @@ int db_get_questions_with_distribution(const char *topic_filter, const char *dif
 // Get all topics
 int db_get_all_topics(char *output) {
     sqlite3_stmt *stmt;
-    // Use LEFT JOIN to include ALL topics, even those with 0 questions
+    // 🔧 FIX: Only return topics with at least 1 question (exclude empty topics)
     const char *query = "SELECT t.name, COUNT(q.id) FROM topics t "
-                       "LEFT JOIN questions q ON q.topic_id = t.id GROUP BY t.id ORDER BY t.name";
+                       "LEFT JOIN questions q ON q.topic_id = t.id "
+                       "GROUP BY t.id "
+                       "HAVING COUNT(q.id) > 0 "
+                       "ORDER BY t.name";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
         return 0;
@@ -1033,15 +1158,17 @@ int db_get_leaderboard(int room_id, char *output, int max_size) {
     
     sqlite3_stmt *stmt;
     
-    // Query: Get top 10 highest scores in this room
-    // Order by: score DESC (highest first), then by submitted_at ASC (earliest submission wins ties)
+    // 🔧 FIX: Group by user and take MAX(score) for each user
+    // This ensures we only show the BEST score for each user, not all attempts
+    // Order by: MAX(score) DESC (highest first), MIN(submitted_at) ASC (earliest submission wins ties)
     const char *query = 
-        "SELECT u.username, r.score, r.total_questions, r.submitted_at "
+        "SELECT u.username, MAX(r.score) as best_score, r.total_questions, MIN(r.submitted_at) as first_attempt "
         "FROM results r "
         "JOIN participants p ON r.participant_id = p.id "
         "JOIN users u ON p.user_id = u.id "
         "WHERE r.room_id = ? "
-        "ORDER BY r.score DESC, r.submitted_at ASC "
+        "GROUP BY u.id "
+        "ORDER BY best_score DESC, first_attempt ASC "
         "LIMIT 10";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {

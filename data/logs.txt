@@ -487,3 +487,77 @@
 2026-01-01 21:33:38 - User 20236009 viewed leaderboard for room test_5
 2026-01-01 21:35:48 - SERVER_STARTED
 2026-01-01 21:35:56 - User 20235956 logged in as admin
+2026-01-01 22:40:38 - SERVER_STARTED
+2026-01-01 22:40:54 - User 20235956 logged in as admin
+2026-01-01 22:42:33 - Admin 20235956 added question ID 51 to database: network_programming/medium
+2026-01-01 22:43:44 - Admin 20235956 added question ID 52 to database: network_programming/hard
+2026-01-01 22:44:10 - SERVER_STARTED
+2026-01-01 22:44:33 - User 20235956 logged in as admin
+2026-01-01 22:44:51 - Admin 20235956 deleted question ID 51 (21 is the port number for)
+2026-01-01 22:45:33 - Admin 20235956 added question ID 52 to database: network_programming/hard
+2026-01-01 22:55:25 - SERVER_STARTED
+2026-01-01 22:56:41 - SERVER_STARTED
+2026-01-01 22:57:03 - Login failed for user 20235956
+2026-01-01 22:57:19 - User 20235956 registered as admin in database
+2026-01-01 22:57:30 - User 20236009 registered as student in database
+2026-01-01 22:57:37 - User 20235956 logged in as admin
+2026-01-01 22:58:28 - Admin 20235956 created room test_1 with 10 questions
+2026-01-01 22:59:20 - Admin 20235956 added question ID 51 to database: network_programming/medium
+2026-01-01 22:59:52 - Admin 20235956 added question ID 52 to database: network_programming /hard
+2026-01-01 23:00:09 - User 20236009 logged in as student
+2026-01-01 23:00:38 - User 20236009 submitted answers in room test_1: 10/10
+2026-01-01 23:00:49 - User 20236009 viewed leaderboard for room test_1
+2026-01-01 23:01:02 - SERVER_STARTED
+2026-01-01 23:01:15 - User 20235956 logged in as admin
+2026-01-01 23:01:30 - Admin 20235956 deleted question ID 51 (21 is the port number for)
+2026-01-01 23:02:18 - Admin 20235956 added question ID 53 to database: network_programming/medium
+2026-01-01 23:02:57 - Admin 20235956 deleted question ID 53 (21 is the port number for)
+2026-01-01 23:03:31 - Admin 20235956 added question ID 54 to database: network_programming/medium
+2026-01-01 23:03:38 - SERVER_STARTED
+2026-01-01 23:03:49 - User 20235956 logged in as admin
+2026-01-01 23:04:31 - User 20235956 logged in as admin
+2026-01-01 23:04:47 - Admin 20235956 deleted question ID 52 (HTTPS port number is)
+2026-01-01 23:05:23 - Admin 20235956 added question ID 55 to database: network_programming/hard
+2026-01-01 23:05:53 - User 20235956 logged in as admin
+2026-01-01 23:06:13 - User 20235956 submitted answers in room test_1: 9/10
+2026-01-01 23:06:42 - User 20235956 viewed leaderboard for room test_1
+2026-01-01 23:07:10 - User 20235956 submitted answers in room test_1: 10/10
+2026-01-01 23:07:22 - User 20235956 viewed leaderboard for room test_1
+2026-01-01 23:07:42 - SERVER_STARTED
+2026-01-01 23:07:53 - User 20235956 logged in as admin
+2026-01-01 23:07:58 - User 20235956 viewed leaderboard for room test_1
+2026-01-01 23:12:43 - SERVER_STARTED
+2026-01-01 23:12:54 - User 20235956 logged in as admin
+2026-01-01 23:13:00 - User 20235956 viewed leaderboard for room test_1
+2026-01-01 23:13:38 - User 20235956 submitted answers in room test_1: 10/10
+2026-01-01 23:13:55 - User 20235956 viewed leaderboard for room test_1
+2026-01-01 23:14:11 - SERVER_STARTED
+2026-01-01 23:14:23 - User 20235956 logged in as admin
+2026-01-01 23:14:29 - User 20235956 viewed leaderboard for room test_1
+2026-01-01 23:15:45 - User 20235956 submitted answers in room test_1: 10/10
+2026-01-01 23:15:59 - User 20235956 viewed leaderboard for room test_1
+2026-01-01 23:16:18 - SERVER_STARTED
+2026-01-01 23:16:37 - User 20236009 logged in as student
+2026-01-01 23:16:56 - User 20236009 viewed leaderboard for room test_1
+2026-01-01 23:17:55 - User 20236010 registered as student in database
+2026-01-01 23:18:01 - User 20236010 logged in as student
+2026-01-01 23:18:16 - User 20236010 submitted answers in room test_1: 6/10
+2026-01-01 23:18:31 - User 20236010 viewed leaderboard for room test_1
+2026-01-01 23:18:41 - SERVER_STARTED
+2026-01-01 23:19:04 - User 20235956 logged in as admin
+2026-01-01 23:19:25 - User 20235956 viewed leaderboard for room test_1
+2026-01-01 23:19:40 - User 20236010 logged in as student
+2026-01-01 23:19:59 - User 20236010 submitted answers in room test_1: 7/10
+2026-01-01 23:20:11 - User 20236010 viewed leaderboard for room test_1
+2026-01-01 23:21:06 - SERVER_STARTED
+2026-01-01 23:21:15 - User 20235956 logged in as admin
+2026-01-01 23:26:16 - SERVER_STARTED
+2026-01-01 23:27:13 - SERVER_STARTED
+2026-01-01 23:32:00 - SERVER_STARTED
+2026-01-01 23:32:12 - User 20235956 logged in as admin
+2026-01-01 23:32:41 - User 20235956 viewed leaderboard for room test_1
+2026-01-01 23:34:19 - User 20235956 logged in as admin
+2026-01-01 23:35:02 - User 20235956 logged in as admin
+2026-01-01 23:36:21 - SERVER_STARTED
+2026-01-01 23:36:30 - User 20235956 logged in as admin
+2026-01-01 23:36:49 - User 20235956 logged in as admin
