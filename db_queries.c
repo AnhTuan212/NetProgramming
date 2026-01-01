@@ -951,39 +951,85 @@ int db_add_result(int participant_id, int room_id, int score, int total, int cor
 
 // Get leaderboard for room
 int db_get_leaderboard(int room_id, char *output, int max_size) {
+    if (!db || room_id <= 0 || !output || max_size <= 0) {
+        return 0;
+    }
+    
     sqlite3_stmt *stmt;
+    
+    // Query: Get top 10 highest scores in this room
+    // Order by: score DESC (highest first), then by submitted_at ASC (earliest submission wins ties)
     const char *query = 
-        "SELECT u.username, r.score, r.total_questions FROM results r "
+        "SELECT u.username, r.score, r.total_questions, r.submitted_at "
+        "FROM results r "
         "JOIN participants p ON r.participant_id = p.id "
         "JOIN users u ON p.user_id = u.id "
-        "WHERE r.room_id = ? ORDER BY r.score DESC LIMIT 100";
+        "WHERE r.room_id = ? "
+        "ORDER BY r.score DESC, r.submitted_at ASC "
+        "LIMIT 10";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Error preparing leaderboard query: %s\n", sqlite3_errmsg(db));
         return 0;
     }
     
     sqlite3_bind_int(stmt, 1, room_id);
     
-    strcpy(output, "");
-    int count = 0;
+    // Initialize output
+    output[0] = '\0';
+    int pos = 0;
+    int rank = 1;
     
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
+    // Format header with box drawing characters - cleaner design
+    pos += snprintf(output + pos, max_size - pos, 
+                   "┌─────┬──────────────────────┬─────────┐\n");
+    pos += snprintf(output + pos, max_size - pos, 
+                   "│ #   │ Username             │  Score  │\n");
+    pos += snprintf(output + pos, max_size - pos, 
+                   "├─────┼──────────────────────┼─────────┤\n");
+    
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < 10 && pos < max_size - 200) {
         const char *username = (const char*)sqlite3_column_text(stmt, 0);
         int score = sqlite3_column_int(stmt, 1);
         int total = sqlite3_column_int(stmt, 2);
         
-        char line[256];
-        sprintf(line, "%d. %s - %d/%d\n", count + 1, username, score, total);
-        
-        if (strlen(output) + strlen(line) < max_size) {
-            strcat(output, line);
-            count++;
+        // Truncate long usernames to 20 chars
+        char display_name[22];
+        if (strlen(username) > 20) {
+            strncpy(display_name, username, 17);
+            display_name[17] = '\0';
+            strcat(display_name, "..");
         } else {
-            break;
+            strcpy(display_name, username);
         }
+        
+        // Format: "│ 1   │ user                 │  5/5    │\n"
+        pos += snprintf(output + pos, max_size - pos,
+                       "│ %-3d │ %-20s │ %3d/%-3d │\n",
+                       rank, display_name, score, total);
+        
+        rank++;
+        count++;
+    }
+    
+    // Format footer
+    if (pos < max_size - 50) {
+        pos += snprintf(output + pos, max_size - pos,
+                       "└─────┴──────────────────────┴─────────┘\n");
     }
     
     sqlite3_finalize(stmt);
+    
+    if (count == 0) {
+        // No results yet
+        snprintf(output, max_size, "No results yet for this room.\n");
+        return 0;
+    }
+    
+    fprintf(stderr, "[DB] ✓ Leaderboard retrieved for room %d (showing %d of top 10)\n", 
+            room_id, count);
+    
     return count;
 }
 
@@ -1038,26 +1084,90 @@ int db_delete_room(int room_id) {
     
     sqlite3_stmt *stmt;
     
-    // First delete questions in this room
+    fprintf(stderr, "[DB] Starting cascade delete for room %d\n", room_id);
+    
+    // Get room name for logging
+    char room_name[128] = "";
+    const char *get_room_query = "SELECT name FROM rooms WHERE id = ?";
+    if (sqlite3_prepare_v2(db, get_room_query, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, room_id);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            strncpy(room_name, (const char*)sqlite3_column_text(stmt, 0), 127);
+            room_name[127] = '\0';
+        }
+        sqlite3_finalize(stmt);
+    }
+    
+    // Count participants before deletion (for logging)
+    int participant_count = 0;
+    const char *count_participants = "SELECT COUNT(*) FROM participants WHERE room_id = ?";
+    if (sqlite3_prepare_v2(db, count_participants, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, room_id);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            participant_count = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+    
+    // Count answers before deletion (for logging)
+    int answer_count = 0;
+    const char *count_answers = 
+        "SELECT COUNT(*) FROM answers WHERE participant_id IN ("
+        "  SELECT id FROM participants WHERE room_id = ?"
+        ")";
+    if (sqlite3_prepare_v2(db, count_answers, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, room_id);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            answer_count = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+    
+    // Count results before deletion (for logging)
+    int result_count = 0;
+    const char *count_results = "SELECT COUNT(*) FROM results WHERE room_id = ?";
+    if (sqlite3_prepare_v2(db, count_results, -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, room_id);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            result_count = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+    
+    // First delete room_questions (explicit, though CASCADE would handle it)
     const char *delete_questions = "DELETE FROM room_questions WHERE room_id = ?";
     if (sqlite3_prepare_v2(db, delete_questions, -1, &stmt, NULL) == SQLITE_OK) {
         sqlite3_bind_int(stmt, 1, room_id);
         sqlite3_step(stmt);
         sqlite3_finalize(stmt);
+        fprintf(stderr, "[DB]   - Deleted room_questions for room %d\n", room_id);
     }
     
-    // Then delete the room itself
+    // CASCADE will handle: participants -> answers, results
+    // But let's delete room_questions explicitly and let CASCADE handle the rest
+    
+    // Finally delete the room itself (CASCADE will delete participants, answers, results)
     const char *delete_room = "DELETE FROM rooms WHERE id = ?";
     if (sqlite3_prepare_v2(db, delete_room, -1, &stmt, NULL) != SQLITE_OK) {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        fprintf(stderr, "[DB] ✗ Error preparing delete room query: %s\n", sqlite3_errmsg(db));
         return 0;
     }
     
     sqlite3_bind_int(stmt, 1, room_id);
-    int result = (sqlite3_step(stmt) == SQLITE_DONE) ? 1 : 0;
+    int rc = sqlite3_step(stmt);
+    int changes = sqlite3_changes(db);
     sqlite3_finalize(stmt);
     
-    return result;
+    if (rc == SQLITE_DONE && changes > 0) {
+        fprintf(stderr, "[DB] ✓ Room deleted: %s (ID: %d)\n", room_name, room_id);
+        fprintf(stderr, "[DB]   - Cascade deleted %d participants\n", participant_count);
+        fprintf(stderr, "[DB]   - Cascade deleted %d answers\n", answer_count);
+        fprintf(stderr, "[DB]   - Cascade deleted %d results\n", result_count);
+        return 1;
+    }
+    
+    fprintf(stderr, "[DB] ✗ Failed to delete room %d\n", room_id);
+    return 0;
 }
 
 // Renumber questions to remove gaps after deletion
@@ -1619,6 +1729,109 @@ int db_save_result(int participant_id, int room_id, int score, int total_questio
             participant_id, room_id, score, total_questions, correct_answers);
     
     return 1;
+}
+
+// ==================== LOAD PARTICIPANTS FOR SERVER RESTART ====================
+
+// Load answers for a participant from database and reconstruct answer string
+// Returns 1 on success, 0 on failure
+int db_load_participant_answers(int participant_id, char *answers, int max_len) {
+    if (!db || participant_id <= 0 || !answers || max_len <= 0) {
+        return 0;
+    }
+    
+    sqlite3_stmt *stmt;
+    const char *query = 
+        "SELECT question_id, selected_option FROM answers "
+        "WHERE participant_id = ? "
+        "ORDER BY question_id ASC";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Error loading participant answers: %s\n", sqlite3_errmsg(db));
+        memset(answers, '.', max_len);
+        answers[max_len - 1] = '\0';
+        return 0;
+    }
+    
+    sqlite3_bind_int(stmt, 1, participant_id);
+    
+    // Initialize all answers to '.' (not answered)
+    memset(answers, '.', max_len);
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        int question_id = sqlite3_column_int(stmt, 0);
+        const char *selected = (const char*)sqlite3_column_text(stmt, 1);
+        
+        // Use safe indexing (question_id should be sequential)
+        if (question_id > 0 && question_id <= max_len) {
+            answers[question_id - 1] = selected[0];
+        }
+    }
+    
+    sqlite3_finalize(stmt);
+    answers[max_len - 1] = '\0';
+    
+    fprintf(stderr, "[DB] Loaded answers for participant %d: %s\n", participant_id, answers);
+    return 1;
+}
+
+// Load all participants and their results for a room from database
+// Returns number of participants loaded
+int db_load_room_participants(int room_id, DBParticipantInfo *participants, int max_count) {
+    if (!db || room_id <= 0 || !participants || max_count <= 0) {
+        return 0;
+    }
+    
+    sqlite3_stmt *stmt;
+    
+    // Get all participants who have joined this room, including their results
+    const char *query = 
+        "SELECT p.id, u.username, r.score "
+        "FROM participants p "
+        "JOIN users u ON p.user_id = u.id "
+        "LEFT JOIN results r ON p.id = r.participant_id AND r.room_id = ? "
+        "WHERE p.room_id = ? "
+        "ORDER BY p.joined_at DESC";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Error loading participants: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    sqlite3_bind_int(stmt, 1, room_id);
+    sqlite3_bind_int(stmt, 2, room_id);
+    
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        int participant_id = sqlite3_column_int(stmt, 0);
+        const char *username = (const char*)sqlite3_column_text(stmt, 1);
+        
+        // Get score (NULL = still in progress = -1)
+        int score = -1;
+        if (sqlite3_column_type(stmt, 2) != SQLITE_NULL) {
+            score = sqlite3_column_int(stmt, 2);
+        }
+        
+        // Populate structure
+        participants[count].db_id = participant_id;
+        strncpy(participants[count].username, username, 63);
+        participants[count].username[63] = '\0';
+        participants[count].score = score;
+        
+        // Load answers from answers table
+        memset(participants[count].answers, '.', 50);
+        participants[count].answers[49] = '\0';
+        db_load_participant_answers(participant_id, participants[count].answers, 50);
+        
+        fprintf(stderr, "[DB] ✓ Loaded participant %d: %s (score=%d, answers=%s)\n", 
+                participant_id, username, score, participants[count].answers);
+        
+        count++;
+    }
+    
+    sqlite3_finalize(stmt);
+    fprintf(stderr, "[DB] ✓ Loaded %d participants for room %d\n", count, room_id);
+    return count;
 }
 
 // Get all results for a specific room

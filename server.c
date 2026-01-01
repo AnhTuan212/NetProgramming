@@ -107,6 +107,8 @@ void load_rooms() {
     int loaded_count = db_load_all_rooms(db_rooms, MAX_ROOMS);
     
     roomCount = 0;
+    int total_participants = 0;
+    
     for (int i = 0; i < loaded_count && roomCount < MAX_ROOMS; i++) {
         Room *r = &rooms[roomCount];
         r->db_id = db_rooms[i].id;
@@ -153,12 +155,32 @@ void load_rooms() {
         }
         
         if (r->numQuestions > 0) {
+            // 🔧 NEW: Load participants + answers from database to restore test results
+            DBParticipantInfo db_participants[MAX_PARTICIPANTS];
+            int num_participants = db_load_room_participants(r->db_id, db_participants, MAX_PARTICIPANTS);
+            
+            // Populate in-memory Participant array
+            for (int p = 0; p < num_participants; p++) {
+                r->participants[p].db_id = db_participants[p].db_id;
+                strncpy(r->participants[p].username, db_participants[p].username, 63);
+                r->participants[p].username[63] = '\0';
+                r->participants[p].score = db_participants[p].score;
+                strncpy(r->participants[p].answers, db_participants[p].answers, MAX_QUESTIONS_PER_ROOM - 1);
+                r->participants[p].answers[MAX_QUESTIONS_PER_ROOM - 1] = '\0';
+                r->participants[p].history_count = 0;
+                r->participants[p].submit_time = 0;
+                r->participants[p].start_time = time(NULL);  // Reset timer
+            }
+            r->participantCount = num_participants;
+            total_participants += num_participants;
+            
             roomCount++;
-            printf("✓ Loaded room: %s (ID: %d, Questions: %d)\n", r->name, r->db_id, r->numQuestions);
+            printf("✓ Loaded room: %s (ID: %d, Questions: %d, Participants: %d)\n", 
+                   r->name, r->db_id, r->numQuestions, num_participants);
         }
     }
     
-    printf("Loaded %d rooms from database on startup\n", roomCount);
+    printf("Loaded %d rooms with %d total participants from database on startup\n", roomCount, total_participants);
 }
 
 void save_results() {
@@ -707,10 +729,36 @@ void* handle_client(void *arg) {
             }
         }
         else if (strcmp(cmd, "LEADERBOARD") == 0) {
-            // 🔧 FIX: Query database directly instead of reading file
-            char output[2048] = "SUCCESS ";
-            db_get_leaderboard(0, output + 8, sizeof(output) - 9);
-            send_msg(cli->sock, output);
+            // 🔧 FIX: Parse room name from command
+            char room_name[64] = "";
+            sscanf(buffer, "LEADERBOARD %63s", room_name);
+            
+            if (strlen(room_name) == 0) {
+                send_msg(cli->sock, "FAIL Please specify a room name: LEADERBOARD <room_name>");
+            } else {
+                // Find room by name
+                Room *r = find_room(room_name);
+                if (r == NULL) {
+                    char error[256];
+                    snprintf(error, sizeof(error), "FAIL Room '%s' not found", room_name);
+                    send_msg(cli->sock, error);
+                } else {
+                    // Get leaderboard for this room (no SUCCESS prefix)
+                    char output[4096];
+                    output[0] = '\0';
+                    int count = db_get_leaderboard(r->db_id, output, sizeof(output));
+                    
+                    if (count == 0) {
+                        snprintf(output, sizeof(output), "No results yet for room '%s'\n", room_name);
+                    }
+                    
+                    send_msg(cli->sock, output);
+                    
+                    char log_msg[256];
+                    sprintf(log_msg, "User %s viewed leaderboard for room %s", cli->username, room_name);
+                    writeLog(log_msg);
+                }
+            }
         }
         else if (strcmp(cmd, "PRACTICE") == 0) {
             if (practiceQuestionCount == 0) send_msg(cli->sock, "FAIL No practice questions");

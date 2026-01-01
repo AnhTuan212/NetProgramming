@@ -25,6 +25,14 @@ typedef struct {
     int is_finished;
 } DBRoom;
 
+// 🔧 Participant info for loading from database
+typedef struct {
+    int db_id;
+    char username[64];
+    int score;
+    char answers[50];  // MAX_QUESTIONS_PER_ROOM = 50
+} DBParticipantInfo;
+
 // ==================== QUESTIONS ====================
 int db_add_question(const char *text, const char *opt_a, const char *opt_b,
                    const char *opt_c, const char *opt_d, char correct,
@@ -78,6 +86,10 @@ int db_get_random_filtered_questions(const char *topic_ids, int difficulty_id, i
 char* db_parse_topic_filter(const char *filter_str, int *topic_counts, int max_topics);  // 🔧 Parse "topic:count ..." format
 void db_parse_difficulty_filter(const char *filter_str, int *difficulty_counts);  // 🔧 Parse "easy:count medium:count ..." format
 void db_count_difficulties_for_topics(const char *topic_ids, int *difficulty_counts);  // 🔧 Count difficulties available for selected topics
+
+// ==================== LOAD PARTICIPANTS FOR SERVER RESTART ====================
+int db_load_participant_answers(int participant_id, char *answers, int max_len);  // 🔧 Load answers from database
+int db_load_room_participants(int room_id, DBParticipantInfo *participants, int max_count);  // 🔧 Load participants + answers from database
 
 #endif // DB_QUERIES_H
 

@@ -593,9 +593,28 @@ void handle_view_results() {
 }
 
 void handle_leaderboard() {
-    send_message("LEADERBOARD");
+    // Ask user which room to view leaderboard for
+    char room_name[64];
+    printf("\nEnter room name to view leaderboard: ");
+    if (fgets(room_name, sizeof(room_name), stdin) == NULL) return;
+    trim_input_newline(room_name);
+    
+    if (strlen(room_name) == 0) {
+        printf("Cancelled.\n");
+        return;
+    }
+    
+    // Request leaderboard for this room
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "LEADERBOARD %s", room_name);
+    send_message(cmd);
+    
     char buffer[BUFFER_SIZE];
-    recv_message(buffer, sizeof(buffer));
+    if (recv_message(buffer, sizeof(buffer)) <= 0) {
+        printf("No response from server\n");
+        return;
+    }
+    
     printf("\n%s\n", buffer);
 }
 

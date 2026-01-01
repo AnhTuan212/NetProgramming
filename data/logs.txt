@@ -438,3 +438,31 @@
 2026-01-01 20:19:16 - User 20236009 logged in as student
 2026-01-01 20:19:31 - User 20236009 submitted answers in room test_2: 5/5
 2026-01-01 20:19:44 - User 20235956 logged in as admin
+2026-01-01 20:32:26 - SERVER_STARTED
+2026-01-01 20:32:45 - User 20235956 logged in as admin
+2026-01-01 20:33:10 - Admin 20235956 created room test_4 with 5 questions
+2026-01-01 20:33:44 - User 20235956 submitted answers in room test_4: 5/5
+2026-01-01 20:34:02 - User 20236009 logged in as student
+2026-01-01 20:34:14 - User 20236009 submitted answers in room test_4: 4/5
+2026-01-01 20:34:25 - User 20235956 logged in as admin
+2026-01-01 20:47:22 - SERVER_STARTED
+2026-01-01 20:47:37 - User 20235956 logged in as admin
+2026-01-01 20:48:00 - SERVER_STARTED
+2026-01-01 20:48:09 - User 20235956 logged in as admin
+2026-01-01 20:51:39 - SERVER_STARTED
+2026-01-01 20:51:49 - User 20235956 logged in as admin
+2026-01-01 20:54:10 - SERVER_STARTED
+2026-01-01 20:54:19 - User 20235956 logged in as admin
+2026-01-01 20:54:27 - User 20235956 viewed leaderboard for room test_4
+2026-01-01 20:57:50 - SERVER_STARTED
+2026-01-01 20:58:02 - User 20235956 logged in as admin
+2026-01-01 20:58:27 - User 20235956 viewed leaderboard for room test_4
+2026-01-01 20:58:49 - User 20235956 submitted answers in room test_4: 3/5
+2026-01-01 20:58:57 - User 20235956 viewed leaderboard for room test_4
+2026-01-01 20:59:27 - User 20235956 logged in as admin
+2026-01-01 20:59:37 - User 20235956 viewed leaderboard for room test_4
+2026-01-01 20:59:59 - User 20236010 registered as student in database
+2026-01-01 21:00:07 - User 20236010 logged in as student
+2026-01-01 21:00:34 - User 20236010 submitted answers in room test_4: 5/5
+2026-01-01 21:00:44 - User 20236010 viewed leaderboard for room test_4
+2026-01-01 21:03:58 - User 20235956 logged in as admin
