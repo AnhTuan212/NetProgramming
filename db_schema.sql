@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS rooms (
     duration_minutes INTEGER DEFAULT 60,
     is_started INTEGER DEFAULT 0,
     is_finished INTEGER DEFAULT 0,
+    topic_filter TEXT,
+    difficulty_filter TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
 );

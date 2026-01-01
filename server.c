@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <strings.h>
+#include <sqlite3.h>
 
 #define ADMIN_CODE "network_programming"
 #define PORT 9000
@@ -98,12 +99,66 @@ void save_rooms() {
 }
 
 void load_rooms() {
-    // Load active rooms from database (rooms that haven't been deleted)
+    // Load active rooms from database (rooms that haven't been deleted/finished)
     // Rooms are created/deleted via database calls, not file I/O
-    // This maintains in-memory state for active exam sessions
-    roomCount = 0;  // Reset in-memory rooms
-    // Note: In a full migration, this would load room list from database
-    // For now, rooms are added to memory when created and removed when deleted via database
+    // This maintains in-memory state for active exam sessions on server restart
+    
+    DBRoom db_rooms[MAX_ROOMS];
+    int loaded_count = db_load_all_rooms(db_rooms, MAX_ROOMS);
+    
+    roomCount = 0;
+    for (int i = 0; i < loaded_count && roomCount < MAX_ROOMS; i++) {
+        Room *r = &rooms[roomCount];
+        r->db_id = db_rooms[i].id;
+        strncpy(r->name, db_rooms[i].name, 63);
+        r->name[63] = '\0';
+        
+        // Get owner username from database
+        char owner_name[64] = "";
+        if (db_get_username_by_id(db_rooms[i].owner_id, owner_name, 64)) {
+            strcpy(r->owner, owner_name);
+        } else {
+            strcpy(r->owner, "unknown");
+        }
+        
+        r->duration = db_rooms[i].duration_minutes;
+        r->started = db_rooms[i].is_started;
+        r->start_time = time(NULL);  // Use current time for resumed session
+        r->participantCount = 0;
+        
+        // Load questions for this room from database
+        DBQuestion db_questions[MAX_QUESTIONS_PER_ROOM];
+        int num_questions = db_get_room_questions(db_rooms[i].id, db_questions, MAX_QUESTIONS_PER_ROOM);
+        
+        // Convert DBQuestion to QItem format
+        r->numQuestions = 0;
+        for (int q = 0; q < num_questions; q++) {
+            r->questions[q].id = db_questions[q].id;
+            strncpy(r->questions[q].text, db_questions[q].text, 255);
+            r->questions[q].text[255] = '\0';
+            strncpy(r->questions[q].A, db_questions[q].option_a, 127);
+            r->questions[q].A[127] = '\0';
+            strncpy(r->questions[q].B, db_questions[q].option_b, 127);
+            r->questions[q].B[127] = '\0';
+            strncpy(r->questions[q].C, db_questions[q].option_c, 127);
+            r->questions[q].C[127] = '\0';
+            strncpy(r->questions[q].D, db_questions[q].option_d, 127);
+            r->questions[q].D[127] = '\0';
+            r->questions[q].correct = db_questions[q].correct_option;
+            strncpy(r->questions[q].topic, db_questions[q].topic, 63);
+            r->questions[q].topic[63] = '\0';
+            strncpy(r->questions[q].difficulty, db_questions[q].difficulty, 31);
+            r->questions[q].difficulty[31] = '\0';
+            r->numQuestions++;
+        }
+        
+        if (r->numQuestions > 0) {
+            roomCount++;
+            printf("✓ Loaded room: %s (ID: %d, Questions: %d)\n", r->name, r->db_id, r->numQuestions);
+        }
+    }
+    
+    printf("Loaded %d rooms from database on startup\n", roomCount);
 }
 
 void save_results() {
@@ -229,88 +284,222 @@ void* handle_client(void *arg) {
             send_msg(cli->sock, "FAIL Please login first");
         }
         else if (strcmp(cmd, "CREATE") == 0 && strcmp(cli->role, "admin") == 0) {
-            char name[64], rest[512] = "";
+            char name[64], topic_filter[512] = "", diff_filter[512] = "";
             int numQ, dur;
-            char topic_filter[256] = "", diff_filter[256] = "";
             
-            // Parse command: CREATE name numQ dur [TOPICS topic:count ...] [DIFFICULTIES diff:count ...]
-            sscanf(buffer, "CREATE %63s %d %d %511s", name, &numQ, &dur, rest);
+            // Parse command: CREATE name numQ dur [TOPICS topic1:count1 topic2:count2 ...] [DIFFICULTIES easy:count ...]
+            // Example: CREATE test_1 10 100 TOPICS database:5 intro_to_ai:5 DIFFICULTIES easy:10
+            int parsed = sscanf(buffer, "CREATE %63s %d %d", name, &numQ, &dur);
             
-            // Parse filters from rest
-            if (strlen(rest) > 0) {
-                char rest_copy[512];
-                strcpy(rest_copy, rest);
-                
-                // Look for TOPICS and DIFFICULTIES keywords
-                char *topics_start = strstr(rest_copy, "TOPICS");
-                char *diffs_start = strstr(rest_copy, "DIFFICULTIES");
-                
-                if (topics_start) {
-                    topics_start += 6; // Skip "TOPICS"
-                    while (*topics_start == ' ') topics_start++;
-                    
-                    int topic_len = 0;
-                    if (diffs_start) {
-                        topic_len = diffs_start - topics_start - 1;
-                    } else {
-                        topic_len = strlen(topics_start);
-                    }
-                    strncpy(topic_filter, topics_start, topic_len);
-                    topic_filter[topic_len] = '\0';
-                }
-                
-                if (diffs_start) {
-                    diffs_start += 12; // Skip "DIFFICULTIES"
-                    while (*diffs_start == ' ') diffs_start++;
-                    strcpy(diff_filter, diffs_start);
-                }
-            }
-            
-            // Validate inputs
-            if (numQ < 1 || numQ > MAX_QUESTIONS_PER_ROOM) {
-                send_msg(cli->sock, "FAIL Number of questions must be 1-50");
-            } else if (dur < 10 || dur > 86400) {
-                send_msg(cli->sock, "FAIL Duration must be 10-86400 seconds");
-            } else if (find_room(name)) {
-                send_msg(cli->sock, "FAIL Room already exists");
+            if (parsed != 3) {
+                send_msg(cli->sock, "FAIL Usage: CREATE <name> <numQ> <duration> [TOPICS ...] [DIFFICULTIES ...]");
             } else {
-                // Load questions with combined filters
-                QItem temp_questions[MAX_QUESTIONS_PER_ROOM];
-                int loaded = loadQuestionsWithFilters("data/questions.txt", temp_questions, numQ,
-                                                      strlen(topic_filter) > 0 ? topic_filter : NULL,
-                                                      strlen(diff_filter) > 0 ? diff_filter : NULL);
-                
-                if (loaded == 0) {
-                    send_msg(cli->sock, "FAIL No questions match your criteria");
-                } else {
-                    // Create room in database
-                    int room_id = db_create_room(name, cli->user_id, dur);
-                    if (room_id <= 0) {
-                        send_msg(cli->sock, "FAIL Could not create room in database");
-                    } else {
-                        // Add questions to room in database
-                        for (int q_idx = 0; q_idx < loaded; q_idx++) {
-                            db_add_question_to_room(room_id, temp_questions[q_idx].id, q_idx);
+                // Parse TOPICS section
+                char *topics_start = strstr(buffer, "TOPICS ");
+                if (topics_start) {
+                    topics_start += 7;  // Skip "TOPICS "
+                    char *difficulties_start = strstr(topics_start, "DIFFICULTIES");
+                    
+                    if (difficulties_start) {
+                        // Topics are between "TOPICS " and "DIFFICULTIES"
+                        int topics_len = difficulties_start - topics_start;
+                        strncpy(topic_filter, topics_start, topics_len);
+                        topic_filter[topics_len] = '\0';
+                        
+                        // Trim trailing spaces
+                        int i = strlen(topic_filter) - 1;
+                        while (i >= 0 && isspace((unsigned char)topic_filter[i])) {
+                            topic_filter[i] = '\0';
+                            i--;
                         }
+                    } else {
+                        // Topics go to end of string
+                        strcpy(topic_filter, topics_start);
                         
-                        // Add to in-memory array for active session management
-                        Room *r = &rooms[roomCount++];
-                        r->db_id = room_id;                  // Store database room ID
-                        strcpy(r->name, name);
-                        strcpy(r->owner, cli->username);
-                        r->duration = dur;
-                        r->started = 1;
-                        r->start_time = time(NULL);
-                        r->participantCount = 0;
-                        r->numQuestions = loaded;
-                        memcpy(r->questions, temp_questions, loaded * sizeof(QItem));
+                        // Trim trailing spaces
+                        int i = strlen(topic_filter) - 1;
+                        while (i >= 0 && isspace((unsigned char)topic_filter[i])) {
+                            topic_filter[i] = '\0';
+                            i--;
+                        }
+                    }
+                }
+                
+                // Parse DIFFICULTIES section
+                char *difficulties_start = strstr(buffer, "DIFFICULTIES ");
+                if (difficulties_start) {
+                    difficulties_start += 13;  // Skip "DIFFICULTIES "
+                    strcpy(diff_filter, difficulties_start);
+                    
+                    // Trim trailing spaces
+                    int i = strlen(diff_filter) - 1;
+                    while (i >= 0 && isspace((unsigned char)diff_filter[i])) {
+                        diff_filter[i] = '\0';
+                        i--;
+                    }
+                }
+                
+                // If topic_filter is "#", treat as empty
+                if (strcmp(topic_filter, "#") == 0) {
+                    strcpy(topic_filter, "");
+                }
+                
+                // If diff_filter is "#", treat as empty
+                if (strcmp(diff_filter, "#") == 0) {
+                    strcpy(diff_filter, "");
+                }
+                
+                // Validate inputs
+                if (numQ < 1 || numQ > MAX_QUESTIONS_PER_ROOM) {
+                    send_msg(cli->sock, "FAIL Number of questions must be 1-50");
+                } else if (dur < 10 || dur > 86400) {
+                    send_msg(cli->sock, "FAIL Duration must be 10-86400 seconds");
+                } else if (find_room(name)) {
+                    send_msg(cli->sock, "FAIL Room already exists");
+                } else {
+                    fprintf(stderr, "[CREATE_ROOM] DEBUG START\n");
+                    fprintf(stderr, "[CREATE_ROOM] room_name='%s', numQ=%d, duration=%d\n", name, numQ, dur);
+                    fprintf(stderr, "[CREATE_ROOM] topic_filter='%s' (len=%zu)\n", topic_filter, strlen(topic_filter));
+                    fprintf(stderr, "[CREATE_ROOM] diff_filter='%s' (len=%zu)\n", diff_filter, strlen(diff_filter));
+                    fflush(stderr);
+                    
+                    // Load questions from database using filtered queries
+                    QItem temp_questions[MAX_QUESTIONS_PER_ROOM];
+                    int loaded = 0;
+                    
+                    if (strlen(topic_filter) > 0 && strlen(diff_filter) > 0) {
+                        fprintf(stderr, "[CREATE_ROOM] Path 1: Both topic and difficulty filters\n");
+                        fflush(stderr);
+                        // Use filtered selection: parse topics and difficulties
+                        int topic_counts[32];
+                        int difficulty_counts[3];
                         
-                        char log_msg[256];
-                        sprintf(log_msg, "Admin %s created room %s with %d questions", cli->username, name, loaded);
-                        writeLog(log_msg);
-                        db_add_log(cli->user_id, "CREATE_ROOM", log_msg);
+                        char *topic_ids = db_parse_topic_filter(topic_filter, topic_counts, 32);
+                        db_parse_difficulty_filter(diff_filter, difficulty_counts);
                         
-                        send_msg(cli->sock, "SUCCESS Room created");
+                        if (topic_ids && (difficulty_counts[0] + difficulty_counts[1] + difficulty_counts[2]) == numQ) {
+                            // Load questions for each difficulty level
+                            DBQuestion db_temp_questions[MAX_QUESTIONS_PER_ROOM];
+                            int q_idx = 0;
+                            
+                            // Load easy questions
+                            if (difficulty_counts[0] > 0) {
+                                int loaded_easy = db_get_random_filtered_questions(topic_ids, 1, difficulty_counts[0], db_temp_questions + q_idx);
+                                fprintf(stderr, "[CREATE_ROOM] Loaded %d easy questions\n", loaded_easy);
+                                q_idx += loaded_easy;
+                            }
+                            
+                            // Load medium questions
+                            if (difficulty_counts[1] > 0) {
+                                int loaded_med = db_get_random_filtered_questions(topic_ids, 2, difficulty_counts[1], db_temp_questions + q_idx);
+                                fprintf(stderr, "[CREATE_ROOM] Loaded %d medium questions\n", loaded_med);
+                                q_idx += loaded_med;
+                            }
+                            
+                            // Load hard questions
+                            if (difficulty_counts[2] > 0) {
+                                int loaded_hard = db_get_random_filtered_questions(topic_ids, 3, difficulty_counts[2], db_temp_questions + q_idx);
+                                fprintf(stderr, "[CREATE_ROOM] Loaded %d hard questions\n", loaded_hard);
+                                q_idx += loaded_hard;
+                            }
+                            
+                            loaded = q_idx;
+                            
+                            // Convert DBQuestion to QItem
+                            for (int i = 0; i < loaded; i++) {
+                                temp_questions[i].id = db_temp_questions[i].id;
+                                strcpy(temp_questions[i].text, db_temp_questions[i].text);
+                                strcpy(temp_questions[i].A, db_temp_questions[i].option_a);
+                                strcpy(temp_questions[i].B, db_temp_questions[i].option_b);
+                                strcpy(temp_questions[i].C, db_temp_questions[i].option_c);
+                                strcpy(temp_questions[i].D, db_temp_questions[i].option_d);
+                                temp_questions[i].correct = db_temp_questions[i].correct_option;
+                                strcpy(temp_questions[i].topic, db_temp_questions[i].topic);
+                                strcpy(temp_questions[i].difficulty, db_temp_questions[i].difficulty);
+                            }
+                        } else {
+                            send_msg(cli->sock, "FAIL Invalid topic or difficulty filter, or total count does not match numQ");
+                            loaded = 0;
+                        }
+                    } else if (strlen(topic_filter) > 0 && strlen(diff_filter) == 0) {
+                        fprintf(stderr, "[CREATE_ROOM] Path 2: Topic filter only (skip difficulty)\n");
+                        fprintf(stderr, "[CREATE_ROOM] Calling db_get_questions_with_distribution('%s', '#', numQ=%d)\n", topic_filter, numQ);
+                        fflush(stderr);
+                        // Topic filter only - no difficulty filter
+                        // Call db_get_questions_with_distribution with diff_filter as "#"
+                        DBQuestion db_temp_questions[MAX_QUESTIONS_PER_ROOM];
+                        loaded = db_get_questions_with_distribution(topic_filter, "#", db_temp_questions, numQ);
+                        
+                        fprintf(stderr, "[CREATE_ROOM] db_get_questions_with_distribution returned %d questions\n", loaded);
+                        fflush(stderr);
+                        
+                        // Convert DBQuestion to QItem
+                        for (int i = 0; i < loaded; i++) {
+                            fprintf(stderr, "[CREATE_ROOM] Question %d: id=%d, topic=%s, difficulty=%s\n", 
+                                    i, db_temp_questions[i].id, db_temp_questions[i].topic, db_temp_questions[i].difficulty);
+                            temp_questions[i].id = db_temp_questions[i].id;
+                            strcpy(temp_questions[i].text, db_temp_questions[i].text);
+                            strcpy(temp_questions[i].A, db_temp_questions[i].option_a);
+                            strcpy(temp_questions[i].B, db_temp_questions[i].option_b);
+                            strcpy(temp_questions[i].C, db_temp_questions[i].option_c);
+                            strcpy(temp_questions[i].D, db_temp_questions[i].option_d);
+                            temp_questions[i].correct = db_temp_questions[i].correct_option;
+                            strcpy(temp_questions[i].topic, db_temp_questions[i].topic);
+                            strcpy(temp_questions[i].difficulty, db_temp_questions[i].difficulty);
+                        }
+                    } else {
+                        fprintf(stderr, "[CREATE_ROOM] Path 3: No filters - load all questions\n");
+                        fflush(stderr);
+                        // No filters: load random questions
+                        DBQuestion db_temp_questions[MAX_QUESTIONS_PER_ROOM];
+                        loaded = db_get_all_questions(db_temp_questions, numQ);
+                        
+                        // Convert to QItem
+                        for (int i = 0; i < loaded; i++) {
+                            temp_questions[i].id = db_temp_questions[i].id;
+                            strcpy(temp_questions[i].text, db_temp_questions[i].text);
+                            strcpy(temp_questions[i].A, db_temp_questions[i].option_a);
+                            strcpy(temp_questions[i].B, db_temp_questions[i].option_b);
+                            strcpy(temp_questions[i].C, db_temp_questions[i].option_c);
+                            strcpy(temp_questions[i].D, db_temp_questions[i].option_d);
+                            temp_questions[i].correct = db_temp_questions[i].correct_option;
+                            strcpy(temp_questions[i].topic, db_temp_questions[i].topic);
+                            strcpy(temp_questions[i].difficulty, db_temp_questions[i].difficulty);
+                        }
+                    }
+                    
+                    if (loaded == 0) {
+                        send_msg(cli->sock, "FAIL No questions match your criteria");
+                    } else {
+                        // Create room in database
+                        int room_id = db_create_room(name, cli->user_id, dur);
+                        if (room_id <= 0) {
+                            send_msg(cli->sock, "FAIL Could not create room in database");
+                        } else {
+                            // Add questions to room in database
+                            for (int q_idx = 0; q_idx < loaded; q_idx++) {
+                                db_add_question_to_room(room_id, temp_questions[q_idx].id, q_idx);
+                            }
+                            
+                            // Add to in-memory array for active session management
+                            Room *r = &rooms[roomCount++];
+                            r->db_id = room_id;                  // Store database room ID
+                            strcpy(r->name, name);
+                            strcpy(r->owner, cli->username);
+                            r->duration = dur;
+                            r->started = 1;
+                            r->start_time = time(NULL);
+                            r->participantCount = 0;
+                            r->numQuestions = loaded;
+                            memcpy(r->questions, temp_questions, loaded * sizeof(QItem));
+                            
+                            char log_msg[256];
+                            sprintf(log_msg, "Admin %s created room %s with %d questions", cli->username, name, loaded);
+                            writeLog(log_msg);
+                            db_add_log(cli->user_id, "CREATE_ROOM", log_msg);
+                            
+                            send_msg(cli->sock, "SUCCESS Room created");
+                        }
                     }
                 }
             }
@@ -540,38 +729,8 @@ void* handle_client(void *arg) {
             
             // Use database function instead of file I/O
             if (get_all_topics_with_counts(topics_data) > 0 && strlen(topics_data) > 0) {
-                // Format: topic1:count|topic2:count|... -> Topic1(count)|Topic2(count)|...
-                char result[2048] = "";
-                char *saveptr;
-                char *token = strtok_r(topics_data, "|", &saveptr);
-                int first = 1;
-                
-                while (token) {
-                    char *colon = strchr(token, ':');
-                    if (colon) {
-                        int name_len = colon - token;
-                        char topic_name[64];
-                        strncpy(topic_name, token, name_len);
-                        topic_name[name_len] = '\0';
-                        int count = atoi(colon + 1);
-                        
-                        // Capitalize first letter
-                        if (topic_name[0] >= 'a' && topic_name[0] <= 'z') {
-                            topic_name[0] = topic_name[0] - 'a' + 'A';
-                        }
-                        
-                        if (!first) strcat(result, "|");
-                        char formatted[128];
-                        snprintf(formatted, sizeof(formatted), "%s(%d)", topic_name, count);
-                        strcat(result, formatted);
-                        first = 0;
-                    }
-                    token = strtok_r(NULL, "|", &saveptr);
-                }
-                if (strlen(result) > 0) {
-                    strcat(result, "|");
-                    strcat(topics_output, result);
-                }
+                // Format: topic1:count1|topic2:count2|... (keep as is)
+                strcat(topics_output, topics_data);
             }
             send_msg(cli->sock, topics_output);
         }
@@ -581,34 +740,51 @@ void* handle_client(void *arg) {
             
             // Use database function instead of file I/O
             if (get_all_difficulties_with_counts(diff_data) > 0 && strlen(diff_data) > 0) {
-                // Format: easy:count|medium:count|hard:count -> Easy(count)|Medium(count)|Hard(count)|
-                char result[1024] = "";
-                char *saveptr;
-                char *token = strtok_r(diff_data, "|", &saveptr);
-                
-                while (token) {
-                    char *colon = strchr(token, ':');
-                    if (colon) {
-                        int name_len = colon - token;
-                        char diff_name[32];
-                        strncpy(diff_name, token, name_len);
-                        diff_name[name_len] = '\0';
-                        int count = atoi(colon + 1);
-                        
-                        // Capitalize first letter
-                        if (diff_name[0] >= 'a' && diff_name[0] <= 'z') {
-                            diff_name[0] = diff_name[0] - 'a' + 'A';
-                        }
-                        
-                        char formatted[128];
-                        snprintf(formatted, sizeof(formatted), "%s(%d)|", diff_name, count);
-                        strcat(result, formatted);
-                    }
-                    token = strtok_r(NULL, "|", &saveptr);
-                }
-                strcat(diff_output, result);
+                // Format: easy:count|medium:count|hard:count (keep as is)
+                strcat(diff_output, diff_data);
             }
             send_msg(cli->sock, diff_output);
+        }
+        else if (strcmp(cmd, "GET_DIFFICULTIES_FOR_TOPICS") == 0) {
+            // Format: GET_DIFFICULTIES_FOR_TOPICS topic1:count1 topic2:count2 ...
+            char topic_filter[512] = "";
+            // Extract everything after "GET_DIFFICULTIES_FOR_TOPICS "
+            const char *prefix = "GET_DIFFICULTIES_FOR_TOPICS ";
+            if (strncmp(buffer, prefix, strlen(prefix)) == 0) {
+                strcpy(topic_filter, buffer + strlen(prefix));
+            }
+            
+            printf("[DEBUG] GET_DIFFICULTIES_FOR_TOPICS received: '%s'\n", topic_filter);
+            fflush(stdout);
+            
+            if (strlen(topic_filter) == 0) {
+                send_msg(cli->sock, "FAIL No topics provided");
+            } else {
+                // Parse topics and get topic_ids string
+                int topic_counts[32];
+                char *topic_ids = db_parse_topic_filter(topic_filter, topic_counts, 32);
+                printf("[DEBUG] Parsed topic_ids: '%s'\n", topic_ids ? topic_ids : "NULL");
+                fflush(stdout);
+                
+                if (!topic_ids) {
+                    send_msg(cli->sock, "FAIL Invalid topic names");
+                } else {
+                    // Count difficulties for these topics
+                    int difficulty_counts[3];
+                    db_count_difficulties_for_topics(topic_ids, difficulty_counts);
+                    printf("[DEBUG] Difficulty counts: easy=%d, medium=%d, hard=%d\n", 
+                           difficulty_counts[0], difficulty_counts[1], difficulty_counts[2]);
+                    fflush(stdout);
+                    
+                    // Format: easy:count|medium:count|hard:count (match database format)
+                    char response[256];
+                    snprintf(response, sizeof(response), 
+                             "SUCCESS easy:%d|medium:%d|hard:%d|",
+                             difficulty_counts[0], difficulty_counts[1], difficulty_counts[2]);
+                    send_msg(cli->sock, response);
+                }
+            }
+
         }
         else if (strcmp(cmd, "ADD_QUESTION") == 0 && strcmp(cli->role, "admin") == 0) {
             // Format: ADD_QUESTION text|A|B|C|D|correct|topic|difficulty
@@ -616,7 +792,7 @@ void* handle_client(void *arg) {
             char correct_str[2], topic[64], difficulty[32];
             
             int parsed = sscanf(buffer, 
-                "ADD_QUESTION %255[^|]|%127[^|]|%127[^|]|%127[^|]|%127[^|]|%1[^|]|%63[^|]|%31s",
+                "ADD_QUESTION %255[^|]|%127[^|]|%127[^|]|%127[^|]|%127[^|]|%1c|%63[^|]|%31s",
                 text, A, B, C, D, correct_str, topic, difficulty);
             
             if (parsed != 8) {
@@ -777,8 +953,24 @@ int main() {
     
     printf("Database initialized successfully\n");
     
-    // 🔧 FIX: Remove text file migration - all data is SQLite-only
-    // Database starts empty, data added via client commands
+    // Load test data from SQL file if database is empty
+    sqlite3_stmt *check_stmt;
+    int topics_count = 0;
+    if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM topics", -1, &check_stmt, NULL) == SQLITE_OK) {
+        if (sqlite3_step(check_stmt) == SQLITE_ROW) {
+            topics_count = sqlite3_column_int(check_stmt, 0);
+        }
+        sqlite3_finalize(check_stmt);
+    }
+    
+    if (topics_count == 0) {
+        printf("Database is empty. Loading test data from SQL file...\n");
+        if (!load_sql_file("insert_questions.sql")) {
+            fprintf(stderr, "Warning: Failed to load SQL file, continuing with empty database\n");
+        }
+    }
+    
+    printf("Database ready for use\n");
     
     // Load practice questions from database (not from file)
     // Use loadQuestionsTxt which converts DBQuestion to QItem format

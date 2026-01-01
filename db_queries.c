@@ -6,6 +6,40 @@
 #include <string.h>
 #include <ctype.h>
 
+// ==================== VALIDATION HELPERS ====================
+
+// Validate topic_ids format: should only contain digits and commas
+// Valid formats: "1", "1,2,3", "5"
+// Invalid: "1a", "1,2,", ",1,2", " 1 "
+static int validate_topic_ids_format(const char *topic_ids) {
+    if (!topic_ids || strlen(topic_ids) == 0) return 0;
+    
+    // Check first character is digit
+    if (!isdigit((unsigned char)topic_ids[0])) return 0;
+    
+    for (int i = 0; topic_ids[i]; i++) {
+        char c = topic_ids[i];
+        // Allow digits and commas only
+        if (!isdigit((unsigned char)c) && c != ',') {
+            fprintf(stderr, "[VALIDATION] Invalid character '%c' in topic_ids: %s\n", c, topic_ids);
+            return 0;
+        }
+        // Don't allow comma at end
+        if (c == ',' && topic_ids[i+1] == '\0') {
+            fprintf(stderr, "[VALIDATION] Trailing comma in topic_ids: %s\n", topic_ids);
+            return 0;
+        }
+        // Don't allow double commas
+        if (c == ',' && topic_ids[i+1] == ',') {
+            fprintf(stderr, "[VALIDATION] Double comma in topic_ids: %s\n", topic_ids);
+            return 0;
+        }
+    }
+    
+    fprintf(stderr, "[VALIDATION] ✓ topic_ids format valid: %s\n", topic_ids);
+    return 1;
+}
+
 // ==================== USER MANAGEMENT ====================
 
 // 🔧 Get user ID by username from database
@@ -359,85 +393,254 @@ int db_get_questions_by_difficulty(const char *difficulty, DBQuestion *questions
 }
 
 // Get questions by topic AND difficulty with distribution
+// Topic filter: "topic1:count1 topic2:count2 ..."
+// Difficulty filter: "easy:count1 medium:count2 ..."
+// This function properly distributes questions from each topic/difficulty combo
 int db_get_questions_with_distribution(const char *topic_filter, const char *diff_filter,
                                        DBQuestion *questions, int max_count) {
-    // Parse topic_filter: "topic1:count1 topic2:count2 ..."
-    // Parse diff_filter: "easy:count1 medium:count2 ..."
     
-    char topic_copy[512], diff_copy[256];
-    strcpy(topic_copy, topic_filter ? topic_filter : "");
-    strcpy(diff_copy, diff_filter ? diff_filter : "");
+    // Parse topic filter: extract topic names and counts
+    typedef struct {
+        char name[64];
+        int count;
+        int id;
+    } TopicFilter;
     
-    // Build dynamic query based on filters
-    char query[2048] = "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, "
-                       "q.correct_option, q.topic_id, q.difficulty_id, t.name, d.name "
-                       "FROM questions q "
-                       "JOIN topics t ON q.topic_id = t.id "
-                       "JOIN difficulties d ON q.difficulty_id = d.id WHERE 1=1";
+    typedef struct {
+        char name[32];
+        int count;
+        int id;
+    } DifficultyFilter;
     
-    if (strlen(topic_copy) > 0) {
-        strcat(query, " AND LOWER(t.name) IN (");
-        char *topic_ptr = strtok(topic_copy, " ");
-        int first = 1;
-        while (topic_ptr) {
-            char *colon = strchr(topic_ptr, ':');
-            if (colon) *colon = '\0';
-            
-            if (!first) strcat(query, ", ");
-            strcat(query, "LOWER('");
-            strcat(query, topic_ptr);
-            strcat(query, "')");
-            first = 0;
-            topic_ptr = strtok(NULL, " ");
+    TopicFilter topics[32];
+    DifficultyFilter difficulties[3];
+    int topic_count = 0;
+    int difficulty_count = 0;
+    int total_wanted = 0;
+    
+    // Parse topics: "topic1:count1 topic2:count2 ..."
+    // If topic_filter is NULL/empty, load ALL topics
+    if (topic_filter && strlen(topic_filter) > 0) {
+        char topic_copy[512];
+        strncpy(topic_copy, topic_filter, sizeof(topic_copy) - 1);
+        topic_copy[sizeof(topic_copy) - 1] = '\0';
+        
+        char *saveptr;
+        char *token = strtok_r(topic_copy, " ", &saveptr);
+        
+        while (token && topic_count < 32) {
+            char *colon = strchr(token, ':');
+            if (colon) {
+                *colon = '\0';
+                strncpy(topics[topic_count].name, token, sizeof(topics[topic_count].name) - 1);
+                topics[topic_count].count = atoi(colon + 1);
+                total_wanted += topics[topic_count].count;
+                
+                // Get topic ID from database
+                sqlite3_stmt *stmt;
+                const char *query = "SELECT id FROM topics WHERE LOWER(name) = LOWER(?)";
+                if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                    sqlite3_bind_text(stmt, 1, topics[topic_count].name, -1, SQLITE_STATIC);
+                    if (sqlite3_step(stmt) == SQLITE_ROW) {
+                        topics[topic_count].id = sqlite3_column_int(stmt, 0);
+                    } else {
+                        topics[topic_count].id = -1;  // Invalid topic
+                    }
+                    sqlite3_finalize(stmt);
+                }
+                
+                topic_count++;
+            }
+            token = strtok_r(NULL, " ", &saveptr);
         }
-        strcat(query, ")");
+    } else {
+        // No topic filter - load ALL topics from database
+        // Distribute max_count questions evenly across all topics
+        sqlite3_stmt *stmt;
+        const char *query = "SELECT id, name FROM topics ORDER BY id";
+        if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+            while (sqlite3_step(stmt) == SQLITE_ROW && topic_count < 32) {
+                topics[topic_count].id = sqlite3_column_int(stmt, 0);
+                strncpy(topics[topic_count].name, (const char*)sqlite3_column_text(stmt, 1),
+                        sizeof(topics[topic_count].name) - 1);
+                topics[topic_count].count = 0;  // Will be calculated below
+                topic_count++;
+            }
+            sqlite3_finalize(stmt);
+        }
+        
+        // Distribute max_count evenly across all topics
+        if (topic_count > 0) {
+            int per_topic = max_count / topic_count;
+            for (int i = 0; i < topic_count; i++) {
+                topics[i].count = per_topic;
+                total_wanted += per_topic;
+            }
+            // Add remainder to first topic
+            int remainder = max_count % topic_count;
+            if (remainder > 0) {
+                topics[0].count += remainder;
+                total_wanted += remainder;
+            }
+        }
     }
     
-    if (strlen(diff_copy) > 0) {
-        strcat(query, " AND LOWER(d.name) IN (");
-        char *diff_ptr = strtok(diff_copy, " ");
-        int first = 1;
-        while (diff_ptr) {
-            char *colon = strchr(diff_ptr, ':');
-            if (colon) *colon = '\0';
-            
-            if (!first) strcat(query, ", ");
-            strcat(query, "LOWER('");
-            strcat(query, diff_ptr);
-            strcat(query, "')");
-            first = 0;
-            diff_ptr = strtok(NULL, " ");
+    // Parse difficulties: "easy:count1 medium:count2 ..."
+    // If diff_filter is empty or "#", load ALL difficulties (no filter)
+    if (diff_filter && strlen(diff_filter) > 0 && strcmp(diff_filter, "#") != 0) {
+        char diff_copy[256];
+        strncpy(diff_copy, diff_filter, sizeof(diff_copy) - 1);
+        diff_copy[sizeof(diff_copy) - 1] = '\0';
+        
+        char *saveptr;
+        char *token = strtok_r(diff_copy, " ", &saveptr);
+        
+        while (token && difficulty_count < 3) {
+            char *colon = strchr(token, ':');
+            if (colon) {
+                *colon = '\0';
+                strncpy(difficulties[difficulty_count].name, token, sizeof(difficulties[difficulty_count].name) - 1);
+                difficulties[difficulty_count].count = atoi(colon + 1);
+                
+                // Get difficulty ID from database
+                sqlite3_stmt *stmt;
+                const char *query = "SELECT id FROM difficulties WHERE LOWER(name) = LOWER(?)";
+                if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                    sqlite3_bind_text(stmt, 1, difficulties[difficulty_count].name, -1, SQLITE_STATIC);
+                    if (sqlite3_step(stmt) == SQLITE_ROW) {
+                        difficulties[difficulty_count].id = sqlite3_column_int(stmt, 0);
+                    } else {
+                        difficulties[difficulty_count].id = -1;  // Invalid difficulty
+                    }
+                    sqlite3_finalize(stmt);
+                }
+                
+                difficulty_count++;
+            }
+            token = strtok_r(NULL, " ", &saveptr);
         }
-        strcat(query, ")");
+    } else {
+        // No difficulty filter - load ALL difficulties (easy, medium, hard)
+        // Query all difficulties from database
+        sqlite3_stmt *stmt;
+        const char *query = "SELECT id, name FROM difficulties ORDER BY id";
+        if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+            while (sqlite3_step(stmt) == SQLITE_ROW && difficulty_count < 3) {
+                difficulties[difficulty_count].id = sqlite3_column_int(stmt, 0);
+                strncpy(difficulties[difficulty_count].name, (const char*)sqlite3_column_text(stmt, 1), 
+                        sizeof(difficulties[difficulty_count].name) - 1);
+                difficulties[difficulty_count].count = 0;  // Will fetch all available
+                difficulty_count++;
+            }
+            sqlite3_finalize(stmt);
+        }
     }
     
-    strcat(query, " ORDER BY RANDOM() LIMIT ?");
+    // Validate: at least one valid topic
+    int valid_topics = 0;
+    for (int i = 0; i < topic_count; i++) {
+        if (topics[i].id != -1) valid_topics++;
+    }
     
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+    int valid_difficulties = 0;
+    for (int i = 0; i < difficulty_count; i++) {
+        if (difficulties[i].id != -1) valid_difficulties++;
+    }
+    
+    if (valid_topics == 0 || valid_difficulties == 0 || total_wanted == 0 || total_wanted > max_count) {
+        fprintf(stderr, "[DEBUG] Invalid filters: valid_topics=%d, valid_difficulties=%d, total_wanted=%d, max_count=%d\n", 
+                valid_topics, valid_difficulties, total_wanted, max_count);
         return 0;
     }
     
-    sqlite3_bind_int(stmt, 1, max_count);
+    // Now fetch questions for each topic separately, then distribute across difficulties
+    int result_count = 0;
     
-    int count = 0;
-    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
-        questions[count].id = sqlite3_column_int(stmt, 0);
-        strcpy(questions[count].text, (const char*)sqlite3_column_text(stmt, 1));
-        strcpy(questions[count].option_a, (const char*)sqlite3_column_text(stmt, 2));
-        strcpy(questions[count].option_b, (const char*)sqlite3_column_text(stmt, 3));
-        strcpy(questions[count].option_c, (const char*)sqlite3_column_text(stmt, 4));
-        strcpy(questions[count].option_d, (const char*)sqlite3_column_text(stmt, 5));
-        questions[count].correct_option = *((char*)sqlite3_column_text(stmt, 6));
-        questions[count].topic_id = sqlite3_column_int(stmt, 7);
-        questions[count].difficulty_id = sqlite3_column_int(stmt, 8);
-        strncpy(questions[count].topic, (const char*)sqlite3_column_text(stmt, 9), sizeof(questions[count].topic)-1);
-        strncpy(questions[count].difficulty, (const char*)sqlite3_column_text(stmt, 10), sizeof(questions[count].difficulty)-1);
-        count++;
+    for (int t = 0; t < topic_count && result_count < max_count; t++) {
+        if (topics[t].id == -1) continue;  // Skip invalid topics
+        
+        int questions_for_this_topic = topics[t].count;  // How many questions needed from this topic
+        int fetched_for_topic = 0;
+        
+        // For each difficulty level, get required number of questions from THIS TOPIC ONLY
+        for (int d = 0; d < difficulty_count && fetched_for_topic < questions_for_this_topic; d++) {
+            if (difficulties[d].id == -1) continue;  // Skip invalid difficulties
+            
+            // Determine how many questions to fetch for this (topic, difficulty) combo
+            int limit;
+            if (difficulties[d].count > 0) {
+                // Explicit count specified for this difficulty
+                limit = difficulties[d].count;
+            } else {
+                // No difficulty filter - distribute topic count evenly across difficulties
+                limit = (questions_for_this_topic / difficulty_count);
+                if (d == 0) {
+                    // Add remainder to first difficulty
+                    limit += (questions_for_this_topic % difficulty_count);
+                }
+            }
+            
+            // Cap limit to remaining questions needed for this topic
+            if (limit > questions_for_this_topic - fetched_for_topic) {
+                limit = questions_for_this_topic - fetched_for_topic;
+            }
+            
+            if (limit <= 0) continue;
+            
+            // Get questions ONLY from this topic AND this difficulty
+            const char *query = 
+                "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, "
+                "q.correct_option, q.topic_id, q.difficulty_id, t.name, d.name "
+                "FROM questions q "
+                "JOIN topics t ON q.topic_id = t.id "
+                "JOIN difficulties d ON q.difficulty_id = d.id "
+                "WHERE q.topic_id = ? AND q.difficulty_id = ? "
+                "ORDER BY RANDOM() LIMIT ?";
+            
+            sqlite3_stmt *stmt;
+            if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+                fprintf(stderr, "[DEBUG] Prepare error: %s\n", sqlite3_errmsg(db));
+                continue;
+            }
+            
+            sqlite3_bind_int(stmt, 1, topics[t].id);
+            sqlite3_bind_int(stmt, 2, difficulties[d].id);
+            sqlite3_bind_int(stmt, 3, limit);
+            
+            int fetched = 0;
+            while (sqlite3_step(stmt) == SQLITE_ROW && result_count < max_count && fetched < limit) {
+                questions[result_count].id = sqlite3_column_int(stmt, 0);
+                strncpy(questions[result_count].text, (const char*)sqlite3_column_text(stmt, 1), 
+                        sizeof(questions[result_count].text) - 1);
+                strncpy(questions[result_count].option_a, (const char*)sqlite3_column_text(stmt, 2), 
+                        sizeof(questions[result_count].option_a) - 1);
+                strncpy(questions[result_count].option_b, (const char*)sqlite3_column_text(stmt, 3), 
+                        sizeof(questions[result_count].option_b) - 1);
+                strncpy(questions[result_count].option_c, (const char*)sqlite3_column_text(stmt, 4), 
+                        sizeof(questions[result_count].option_c) - 1);
+                strncpy(questions[result_count].option_d, (const char*)sqlite3_column_text(stmt, 5), 
+                        sizeof(questions[result_count].option_d) - 1);
+                questions[result_count].correct_option = *((char*)sqlite3_column_text(stmt, 6));
+                questions[result_count].topic_id = sqlite3_column_int(stmt, 7);
+                questions[result_count].difficulty_id = sqlite3_column_int(stmt, 8);
+                strncpy(questions[result_count].topic, (const char*)sqlite3_column_text(stmt, 9), 
+                        sizeof(questions[result_count].topic) - 1);
+                strncpy(questions[result_count].difficulty, (const char*)sqlite3_column_text(stmt, 10), 
+                        sizeof(questions[result_count].difficulty) - 1);
+                
+                result_count++;
+                fetched_for_topic++;
+                fetched++;
+            }
+            
+            sqlite3_finalize(stmt);
+        }
     }
     
-    sqlite3_finalize(stmt);
-    return count;
+    fprintf(stderr, "[DEBUG] db_get_questions_with_distribution: fetched %d questions (wanted %d)\n", 
+            result_count, total_wanted);
+    
+    return result_count;
 }
 
 // Get all topics
@@ -974,5 +1177,493 @@ int db_compact_question_ids(void) {
     }
     
     return 1;
+}
+
+// ==================== ROOM PERSISTENCE ====================
+// Load all non-finished rooms from database for server persistence
+int db_load_all_rooms(DBRoom *rooms, int max_count) {
+    if (!db || !rooms || max_count <= 0) return 0;
+    
+    sqlite3_stmt *stmt;
+    const char *query = "SELECT id, name, owner_id, duration_minutes, is_started, is_finished "
+                       "FROM rooms WHERE is_finished = 0 ORDER BY created_at DESC;";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Prepare error: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        rooms[count].id = sqlite3_column_int(stmt, 0);
+        strncpy(rooms[count].name, (const char *)sqlite3_column_text(stmt, 1), 127);
+        rooms[count].name[127] = '\0';
+        rooms[count].owner_id = sqlite3_column_int(stmt, 2);
+        rooms[count].duration_minutes = sqlite3_column_int(stmt, 3);
+        rooms[count].is_started = sqlite3_column_int(stmt, 4);
+        rooms[count].is_finished = sqlite3_column_int(stmt, 5);
+        
+        count++;
+    }
+    
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+// Get username by user_id (helper for loading rooms)
+int db_get_username_by_id(int user_id, char *username, int max_len) {
+    if (!db || !username || max_len <= 0) return 0;
+    
+    sqlite3_stmt *stmt;
+    const char *query = "SELECT username FROM users WHERE id = ?;";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Prepare error: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    sqlite3_bind_int(stmt, 1, user_id);
+    
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        strncpy(username, (const char *)sqlite3_column_text(stmt, 0), max_len - 1);
+        username[max_len - 1] = '\0';
+        sqlite3_finalize(stmt);
+        return 1;
+    }
+    
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+// Get random questions filtered by topic IDs and difficulty
+// topic_ids: comma-separated list of topic IDs (e.g., "1,2,3"), or NULL to get all topics
+// difficulty_id: difficulty ID (1=easy, 2=medium, 3=hard), or 0 to get all difficulties
+// limit: max number of questions to return
+int db_get_random_filtered_questions(const char *topic_ids, int difficulty_id, 
+                                     int limit, DBQuestion *questions) {
+    if (!db || !questions || limit <= 0) return 0;
+    
+    // CRITICAL: Validate topic_ids format before using in SQL query
+    if (topic_ids && strlen(topic_ids) > 0) {
+        if (!validate_topic_ids_format(topic_ids)) {
+            fprintf(stderr, "[ERROR] Invalid topic_ids format: %s\n", topic_ids);
+            return 0;
+        }
+    }
+    
+    fprintf(stderr, "[DEBUG db_get_random_filtered_questions] START\n");
+    fprintf(stderr, "[DEBUG] topic_ids='%s', difficulty_id=%d, limit=%d\n", 
+            topic_ids ? topic_ids : "(NULL)", difficulty_id, limit);
+    fflush(stderr);
+    
+    sqlite3_stmt *stmt;
+    
+    // Build query with optional topic_ids and difficulty_id filters
+    char query[1024];
+    
+    // Build WHERE clause based on what's provided
+    char where_clause[256];
+    where_clause[0] = '\0';
+    
+    if (topic_ids && strlen(topic_ids) > 0) {
+        snprintf(where_clause, sizeof(where_clause), "WHERE q.topic_id IN (%s)", topic_ids);
+        fprintf(stderr, "[DEBUG] WHERE clause (with topic_ids): %s\n", where_clause);
+    }
+    
+    if (difficulty_id > 0) {
+        if (strlen(where_clause) > 0) {
+            strcat(where_clause, " AND q.difficulty_id = ?");
+        } else {
+            snprintf(where_clause, sizeof(where_clause), "WHERE q.difficulty_id = ?");
+        }
+        fprintf(stderr, "[DEBUG] WHERE clause (with difficulty): %s\n", where_clause);
+    }
+    
+    snprintf(query, sizeof(query), 
+             "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option, "
+             "q.topic_id, q.difficulty_id, t.name, d.name FROM questions q "
+             "JOIN topics t ON q.topic_id = t.id "
+             "JOIN difficulties d ON q.difficulty_id = d.id "
+             "%s ORDER BY RANDOM() LIMIT ?", where_clause);
+    
+    fprintf(stderr, "[DEBUG] Full Query:\n%s\n", query);
+    fflush(stderr);
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "[ERROR] Prepare error: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    // Bind parameters
+    int bind_idx = 1;
+    if (difficulty_id > 0) {
+        fprintf(stderr, "[DEBUG] Binding difficulty_id=%d at position %d\n", difficulty_id, bind_idx);
+        sqlite3_bind_int(stmt, bind_idx++, difficulty_id);
+    }
+    fprintf(stderr, "[DEBUG] Binding limit=%d at position %d\n", limit, bind_idx);
+    sqlite3_bind_int(stmt, bind_idx++, limit);
+    
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < limit) {
+        questions[count].id = sqlite3_column_int(stmt, 0);
+        
+        strncpy(questions[count].text, (const char *)sqlite3_column_text(stmt, 1), 255);
+        questions[count].text[255] = '\0';
+        
+        strncpy(questions[count].option_a, (const char *)sqlite3_column_text(stmt, 2), 127);
+        questions[count].option_a[127] = '\0';
+        
+        strncpy(questions[count].option_b, (const char *)sqlite3_column_text(stmt, 3), 127);
+        questions[count].option_b[127] = '\0';
+        
+        strncpy(questions[count].option_c, (const char *)sqlite3_column_text(stmt, 4), 127);
+        questions[count].option_c[127] = '\0';
+        
+        strncpy(questions[count].option_d, (const char *)sqlite3_column_text(stmt, 5), 127);
+        questions[count].option_d[127] = '\0';
+        
+        questions[count].correct_option = ((const char *)sqlite3_column_text(stmt, 6))[0];
+        questions[count].topic_id = sqlite3_column_int(stmt, 7);
+        questions[count].difficulty_id = sqlite3_column_int(stmt, 8);
+        
+        strncpy(questions[count].topic, (const char *)sqlite3_column_text(stmt, 9), 63);
+        questions[count].topic[63] = '\0';
+        
+        strncpy(questions[count].difficulty, (const char *)sqlite3_column_text(stmt, 10), 31);
+        questions[count].difficulty[31] = '\0';
+        
+        fprintf(stderr, "[DEBUG] Fetched question %d: id=%d, topic_id=%d (%s), difficulty_id=%d (%s)\n", 
+                count, questions[count].id, questions[count].topic_id, questions[count].topic,
+                questions[count].difficulty_id, questions[count].difficulty);
+        
+        count++;
+    }
+    
+    sqlite3_finalize(stmt);
+    fprintf(stderr, "[DEBUG db_get_random_filtered_questions] SUCCESS: Fetched %d questions\n", count);
+    fflush(stderr);
+    
+    return count;
+}
+
+// Parse topic filter string (e.g., "database:3 oop:2") and build topic IDs string
+// Returns: "2,3" format (topic IDs from database)
+// Also fills topic_counts array with counts wanted
+char* db_parse_topic_filter(const char *filter_str, int *topic_counts, int max_topics) {
+    static char topic_ids[256];
+    topic_ids[0] = '\0';
+    
+    if (!filter_str || strlen(filter_str) == 0) {
+        return NULL;
+    }
+    
+    printf("[DEBUG db_parse_topic_filter] Input filter_str: '%s'\n", filter_str);
+    fflush(stdout);
+    
+    char filter_copy[256];
+    strncpy(filter_copy, filter_str, sizeof(filter_copy) - 1);
+    filter_copy[sizeof(filter_copy) - 1] = '\0';
+    
+    int topic_id_count = 0;
+    char *saveptr;
+    char *token = strtok_r(filter_copy, " ", &saveptr);
+    
+    while (token && topic_id_count < max_topics) {
+        printf("[DEBUG db_parse_topic_filter] Processing token: '%s'\n", token);
+        fflush(stdout);
+        
+        // Parse "topic_name:count"
+        char *colon = strchr(token, ':');
+        if (colon) {
+            *colon = '\0';
+            const char *topic_name = token;
+            int wanted_count = atoi(colon + 1);
+            
+            printf("[DEBUG db_parse_topic_filter] topic_name='%s', wanted_count=%d\n", topic_name, wanted_count);
+            fflush(stdout);
+            
+            // Get topic ID from database
+            char query[256];
+            sqlite3_stmt *stmt;
+            snprintf(query, sizeof(query), "SELECT id FROM topics WHERE LOWER(name) = LOWER(?);");
+            
+            if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_text(stmt, 1, topic_name, -1, SQLITE_STATIC);
+                
+                if (sqlite3_step(stmt) == SQLITE_ROW) {
+                    int topic_id = sqlite3_column_int(stmt, 0);
+                    printf("[DEBUG db_parse_topic_filter] Found topic_id=%d for topic_name='%s'\n", topic_id, topic_name);
+                    fflush(stdout);
+                    
+                    // Add to topic_ids string
+                    if (strlen(topic_ids) > 0) {
+                        strcat(topic_ids, ",");
+                    }
+                    char id_str[32];
+                    snprintf(id_str, sizeof(id_str), "%d", topic_id);
+                    strcat(topic_ids, id_str);
+                    
+                    // Store count
+                    topic_counts[topic_id_count] = wanted_count;
+                    topic_id_count++;
+                } else {
+                    printf("[DEBUG db_parse_topic_filter] Topic not found: '%s'\n", topic_name);
+                    fflush(stdout);
+                }
+                sqlite3_finalize(stmt);
+            }
+        }
+        token = strtok_r(NULL, " ", &saveptr);
+    }
+    
+    printf("[DEBUG db_parse_topic_filter] Final topic_ids: '%s'\n", topic_ids);
+    fflush(stdout);
+    
+    return (strlen(topic_ids) > 0) ? topic_ids : NULL;
+}
+
+// Parse difficulty filter string (e.g., "easy:3 medium:1 hard:1")
+// Fills difficulty_counts array: [0]=easy, [1]=medium, [2]=hard
+void db_parse_difficulty_filter(const char *filter_str, int *difficulty_counts) {
+    difficulty_counts[0] = 0;  // easy
+    difficulty_counts[1] = 0;  // medium
+    difficulty_counts[2] = 0;  // hard
+    
+    if (!filter_str || strlen(filter_str) == 0) {
+        return;
+    }
+    
+    char filter_copy[256];
+    strncpy(filter_copy, filter_str, sizeof(filter_copy) - 1);
+    filter_copy[sizeof(filter_copy) - 1] = '\0';
+    
+    char *saveptr;
+    char *token = strtok_r(filter_copy, " ", &saveptr);
+    
+    while (token) {
+        // Parse "difficulty_name:count"
+        char *colon = strchr(token, ':');
+        if (colon) {
+            *colon = '\0';
+            const char *diff_name = token;
+            int count = atoi(colon + 1);
+            
+            if (strcasecmp(diff_name, "easy") == 0) {
+                difficulty_counts[0] = count;
+            } else if (strcasecmp(diff_name, "medium") == 0) {
+                difficulty_counts[1] = count;
+            } else if (strcasecmp(diff_name, "hard") == 0) {
+                difficulty_counts[2] = count;
+            }
+        }
+        token = strtok_r(NULL, " ", &saveptr);
+    }
+}
+
+// Count questions by difficulty for specific topics
+// topic_ids: comma-separated topic IDs (e.g., "1,2,5")
+// difficulty_counts: array to fill [0]=easy, [1]=medium, [2]=hard
+void db_count_difficulties_for_topics(const char *topic_ids, int *difficulty_counts) {
+    difficulty_counts[0] = 0;  // easy
+    difficulty_counts[1] = 0;  // medium
+    difficulty_counts[2] = 0;  // hard
+    
+    if (!db || !topic_ids || strlen(topic_ids) == 0) {
+        return;
+    }
+    
+    sqlite3_stmt *stmt;
+    char query[512];
+    
+    printf("[DEBUG db_count_difficulties_for_topics] topic_ids='%s'\n", topic_ids);
+    fflush(stdout);
+    
+    // Build query to count questions by difficulty for given topics
+    snprintf(query, sizeof(query),
+             "SELECT difficulty_id, COUNT(*) FROM questions "
+             "WHERE topic_id IN (%s) GROUP BY difficulty_id;", topic_ids);
+    
+    printf("[DEBUG db_count_difficulties_for_topics] query='%s'\n", query);
+    fflush(stdout);
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Prepare error: %s\n", sqlite3_errmsg(db));
+        return;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        int difficulty_id = sqlite3_column_int(stmt, 0);
+        int count = sqlite3_column_int(stmt, 1);
+        
+        printf("[DEBUG db_count_difficulties_for_topics] difficulty_id=%d, count=%d\n", difficulty_id, count);
+        fflush(stdout);
+        
+        if (difficulty_id == 1) {
+            difficulty_counts[0] = count;  // easy
+        } else if (difficulty_id == 2) {
+            difficulty_counts[1] = count;  // medium
+        } else if (difficulty_id == 3) {
+            difficulty_counts[2] = count;  // hard
+        }
+    }
+    
+    printf("[DEBUG db_count_difficulties_for_topics] Final: easy=%d, medium=%d, hard=%d\n",
+           difficulty_counts[0], difficulty_counts[1], difficulty_counts[2]);
+    fflush(stdout);
+    
+    sqlite3_finalize(stmt);
+}
+
+// ==================== RESULTS PERSISTENCE ====================
+
+// Save participant to database when user joins room
+int db_save_participant(int room_id, int user_id) {
+    if (!db || room_id <= 0 || user_id <= 0) return -1;
+    
+    sqlite3_stmt *stmt;
+    const char *query = "INSERT OR IGNORE INTO participants (room_id, user_id) VALUES (?, ?)";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Error saving participant: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    
+    sqlite3_bind_int(stmt, 1, room_id);
+    sqlite3_bind_int(stmt, 2, user_id);
+    
+    int rc = sqlite3_step(stmt);
+    int participant_id = (rc == SQLITE_DONE) ? (int)sqlite3_last_insert_rowid(db) : -1;
+    sqlite3_finalize(stmt);
+    
+    if (participant_id <= 0) {
+        // User already participant - get their ID
+        const char *get_query = "SELECT id FROM participants WHERE room_id = ? AND user_id = ?";
+        if (sqlite3_prepare_v2(db, get_query, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, room_id);
+            sqlite3_bind_int(stmt, 2, user_id);
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                participant_id = sqlite3_column_int(stmt, 0);
+            }
+            sqlite3_finalize(stmt);
+        }
+    }
+    
+    fprintf(stderr, "[DB] Saved/Retrieved participant: id=%d, room_id=%d, user_id=%d\n", 
+            participant_id, room_id, user_id);
+    
+    return participant_id;
+}
+
+// Save answer to database when user submits an answer
+int db_save_answer(int participant_id, int question_id, char selected_option, int is_correct) {
+    if (!db || participant_id <= 0 || question_id <= 0) return 0;
+    
+    sqlite3_stmt *stmt;
+    const char *query = 
+        "INSERT OR REPLACE INTO answers (participant_id, question_id, selected_option, is_correct) "
+        "VALUES (?, ?, ?, ?)";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Error saving answer: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    sqlite3_bind_int(stmt, 1, participant_id);
+    sqlite3_bind_int(stmt, 2, question_id);
+    sqlite3_bind_text(stmt, 3, &selected_option, 1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 4, is_correct);
+    
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        fprintf(stderr, "[DB] Failed to save answer for participant %d, question %d\n", participant_id, question_id);
+        return 0;
+    }
+    
+    fprintf(stderr, "[DB] Saved answer: participant_id=%d, question_id=%d, selected='%c', correct=%d\n",
+            participant_id, question_id, selected_option, is_correct);
+    
+    return 1;
+}
+
+// Save result to database when user finishes test
+int db_save_result(int participant_id, int room_id, int score, int total_questions, int correct_answers) {
+    if (!db || participant_id <= 0 || room_id <= 0) return -1;
+    
+    sqlite3_stmt *stmt;
+    const char *query = 
+        "INSERT OR REPLACE INTO results (participant_id, room_id, score, total_questions, correct_answers) "
+        "VALUES (?, ?, ?, ?, ?)";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Error saving result: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    
+    sqlite3_bind_int(stmt, 1, participant_id);
+    sqlite3_bind_int(stmt, 2, room_id);
+    sqlite3_bind_int(stmt, 3, score);
+    sqlite3_bind_int(stmt, 4, total_questions);
+    sqlite3_bind_int(stmt, 5, correct_answers);
+    
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        fprintf(stderr, "[DB] Failed to save result for participant %d\n", participant_id);
+        return -1;
+    }
+    
+    fprintf(stderr, "[DB] Saved result: participant_id=%d, room_id=%d, score=%d/%d, correct=%d\n",
+            participant_id, room_id, score, total_questions, correct_answers);
+    
+    return 1;
+}
+
+// Get all results for a specific room
+int db_get_room_results(int room_id, char *output, int max_size) {
+    if (!db || room_id <= 0 || !output || max_size <= 0) return 0;
+    
+    sqlite3_stmt *stmt;
+    const char *query =
+        "SELECT u.username, r.score, r.total_questions, r.correct_answers, r.submitted_at "
+        "FROM results r "
+        "JOIN participants p ON r.participant_id = p.id "
+        "JOIN users u ON p.user_id = u.id "
+        "WHERE r.room_id = ? "
+        "ORDER BY r.score DESC, r.submitted_at ASC";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Error getting room results: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    sqlite3_bind_int(stmt, 1, room_id);
+    
+    strcpy(output, "");
+    int count = 0;
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *username = (const char*)sqlite3_column_text(stmt, 0);
+        int score = sqlite3_column_int(stmt, 1);
+        int total = sqlite3_column_int(stmt, 2);
+        int correct = sqlite3_column_int(stmt, 3);
+        const char *submitted_at = (const char*)sqlite3_column_text(stmt, 4);
+        
+        char line[512];
+        snprintf(line, sizeof(line), "%d|%s|%d|%d|%d|%s\n", 
+                 count + 1, username, score, correct, total, submitted_at);
+        
+        if (strlen(output) + strlen(line) < max_size) {
+            strcat(output, line);
+            count++;
+        } else {
+            break;
+        }
+    }
+    
+    sqlite3_finalize(stmt);
+    return count;
 }
 

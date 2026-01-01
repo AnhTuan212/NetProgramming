@@ -16,4 +16,7 @@ int migrate_from_text_files(const char *data_dir);
 // Verify migration completed successfully
 int verify_migration(void);
 
+// Load and execute SQL file
+int load_sql_file(const char *sql_file_path);
+
 #endif // DB_MIGRATION_H
