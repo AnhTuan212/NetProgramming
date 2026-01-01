@@ -53,6 +53,8 @@ typedef struct {
     int user_id;           // 🔧 Track user ID for question creator logging
     int loggedIn;
     char role[32];
+    int current_question_id;  // 🔧 For PRACTICE mode: track current question
+    char current_question_correct;  // 🔧 Correct answer for current question
 } Client;
 
 // Chỉ khai báo prototype, không viết hàm ở đây nữa
@@ -604,18 +606,63 @@ void* handle_client(void *arg) {
             }
         }
         else if (strcmp(cmd, "ANSWER") == 0) {
-            char roomName[64], ansChar;
-            int qIdx;
-            sscanf(buffer, "ANSWER %63s %d %c", roomName, &qIdx, &ansChar);
+            // Distinguish between: 
+            // - Test room answer: "ANSWER roomname qIdx answer"
+            // - Practice answer: "ANSWER A"
             
-            Room *r = find_room(roomName);
-            if (r) {
-                Participant *p = find_participant(r, cli->username);
-                if (p && p->score == -1) {
-                    if (qIdx >= 0 && qIdx < r->numQuestions) {
-                        p->answers[qIdx] = ansChar;
+            // Count spaces to determine which type
+            int space_count = 0;
+            char *ptr = buffer;
+            while (*ptr) {
+                if (*ptr == ' ') space_count++;
+                ptr++;
+            }
+            
+            fprintf(stderr, "[DEBUG] ANSWER command - space_count=%d, buffer='%s'\n", space_count, buffer);
+            
+            if (space_count == 1) {
+                // Practice mode answer: "ANSWER A" (1 space)
+                fprintf(stderr, "[DEBUG] Practice mode answer detected\n");
+                char *answer_str = strchr(buffer, ' ');
+                if (answer_str == NULL || answer_str[1] == '\0') {
+                    fprintf(stderr, "[DEBUG] Invalid answer format\n");
+                    send_msg(cli->sock, "FAIL Invalid answer format");
+                } else {
+                    char answer_char = answer_str[1];
+                    answer_char = toupper(answer_char);
+                    
+                    fprintf(stderr, "[DEBUG] Answer=%c, Correct=%c, Match=%d\n", 
+                            answer_char, cli->current_question_correct, 
+                            (answer_char == cli->current_question_correct));
+                    
+                    if (answer_char == cli->current_question_correct) {
+                        fprintf(stderr, "[DEBUG] Sending CORRECT\n");
+                        send_msg(cli->sock, "CORRECT");
+                    } else {
+                        char response[256];
+                        snprintf(response, sizeof(response), "WRONG|%c", cli->current_question_correct);
+                        fprintf(stderr, "[DEBUG] Sending WRONG response: %s\n", response);
+                        send_msg(cli->sock, response);
                     }
                 }
+            } else if (space_count >= 3) {
+                // Test room mode answer: "ANSWER roomname qIdx answer"
+                fprintf(stderr, "[DEBUG] Test room mode answer detected\n");
+                char roomName[64], ansChar;
+                int qIdx;
+                sscanf(buffer, "ANSWER %63s %d %c", roomName, &qIdx, &ansChar);
+                
+                Room *r = find_room(roomName);
+                if (r) {
+                    Participant *p = find_participant(r, cli->username);
+                    if (p && p->score == -1) {
+                        if (qIdx >= 0 && qIdx < r->numQuestions) {
+                            p->answers[qIdx] = ansChar;
+                        }
+                    }
+                }
+            } else {
+                fprintf(stderr, "[DEBUG] Unknown ANSWER format (space_count=%d)\n", space_count);
             }
         }
         else if (strcmp(cmd, "SUBMIT") == 0) {
@@ -761,14 +808,47 @@ void* handle_client(void *arg) {
             }
         }
         else if (strcmp(cmd, "PRACTICE") == 0) {
-            if (practiceQuestionCount == 0) send_msg(cli->sock, "FAIL No practice questions");
-            else {
-                int idx = rand() % practiceQuestionCount;
-                QItem *q = &practiceQuestions[idx];
-                char temp[BUF_SIZE];
-                snprintf(temp, sizeof(temp),"PRACTICE_Q [%d/%d] %s\nA) %s\nB) %s\nC) %s\nD) %s\nANSWER %c\n",
-                         idx+1, practiceQuestionCount, q->text, q->A, q->B, q->C, q->D, q->correct);
-                send_msg(cli->sock, temp);
+            // Parse command: PRACTICE or PRACTICE <topic_name>
+            char topic_name[64] = "";
+            char *ptr = strchr(buffer, ' ');
+            if (ptr != NULL) {
+                sscanf(ptr + 1, "%63s", topic_name);
+            }
+            
+            if (strlen(topic_name) == 0) {
+                // First call: send list of topics
+                char topics_output[2048];
+                int topic_count = db_get_all_topics(topics_output);
+                
+                if (topic_count == 0) {
+                    send_msg(cli->sock, "FAIL No topics available");
+                } else {
+                    char response[2048];
+                    snprintf(response, sizeof(response), "TOPICS %s", topics_output);
+                    send_msg(cli->sock, response);
+                }
+            } else {
+                // Second call: PRACTICE <topic_name> - return random question
+                DBQuestion question;
+                if (!db_get_random_question_by_topic(topic_name, &question)) {
+                    char error[256];
+                    snprintf(error, sizeof(error), "FAIL No questions found for topic '%s'", topic_name);
+                    send_msg(cli->sock, error);
+                } else {
+                    // Format question response
+                    char response[BUF_SIZE];
+                    snprintf(response, sizeof(response),
+                            "PRACTICE_Q %d|%s|%s|%s|%s|%s|%c|%s",
+                            question.id, question.text,
+                            question.option_a, question.option_b, 
+                            question.option_c, question.option_d,
+                            question.correct_option, question.topic);
+                    send_msg(cli->sock, response);
+                    
+                    // Store current question for answer checking
+                    cli->current_question_id = question.id;
+                    cli->current_question_correct = question.correct_option;
+                }
             }
         }
         else if (strcmp(cmd, "GET_TOPICS") == 0) {

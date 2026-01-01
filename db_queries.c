@@ -670,6 +670,82 @@ int db_get_all_topics(char *output) {
     return count;
 }
 
+// 🔧 Get a random question from a specific topic
+int db_get_random_question_by_topic(const char *topic_name, DBQuestion *question) {
+    if (!db || !topic_name || strlen(topic_name) == 0 || !question) {
+        return 0;
+    }
+    
+    sqlite3_stmt *stmt;
+    
+    // First, get topic ID by name (case-insensitive)
+    const char *topic_id_query = "SELECT id FROM topics WHERE LOWER(name) = LOWER(?)";
+    if (sqlite3_prepare_v2(db, topic_id_query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Error getting topic ID: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    sqlite3_bind_text(stmt, 1, topic_name, -1, SQLITE_STATIC);
+    
+    int topic_id = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        topic_id = sqlite3_column_int(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    
+    if (topic_id <= 0) {
+        fprintf(stderr, "[DB] Topic '%s' not found\n", topic_name);
+        return 0;
+    }
+    
+    // Now get a random question from this topic
+    const char *question_query = 
+        "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option, "
+        "q.topic_id, q.difficulty_id, t.name, d.name "
+        "FROM questions q "
+        "JOIN topics t ON q.topic_id = t.id "
+        "JOIN difficulties d ON q.difficulty_id = d.id "
+        "WHERE q.topic_id = ? "
+        "ORDER BY RANDOM() LIMIT 1";
+    
+    if (sqlite3_prepare_v2(db, question_query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Error getting random question: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    sqlite3_bind_int(stmt, 1, topic_id);
+    
+    int success = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        question->id = sqlite3_column_int(stmt, 0);
+        strncpy(question->text, (const char *)sqlite3_column_text(stmt, 1), 255);
+        question->text[255] = '\0';
+        strncpy(question->option_a, (const char *)sqlite3_column_text(stmt, 2), 127);
+        question->option_a[127] = '\0';
+        strncpy(question->option_b, (const char *)sqlite3_column_text(stmt, 3), 127);
+        question->option_b[127] = '\0';
+        strncpy(question->option_c, (const char *)sqlite3_column_text(stmt, 4), 127);
+        question->option_c[127] = '\0';
+        strncpy(question->option_d, (const char *)sqlite3_column_text(stmt, 5), 127);
+        question->option_d[127] = '\0';
+        question->correct_option = ((const char *)sqlite3_column_text(stmt, 6))[0];
+        question->topic_id = sqlite3_column_int(stmt, 7);
+        question->difficulty_id = sqlite3_column_int(stmt, 8);
+        strncpy(question->topic, (const char *)sqlite3_column_text(stmt, 9), 63);
+        question->topic[63] = '\0';
+        strncpy(question->difficulty, (const char *)sqlite3_column_text(stmt, 10), 31);
+        question->difficulty[31] = '\0';
+        
+        success = 1;
+        fprintf(stderr, "[DB] ✓ Random question fetched for topic '%s': Q%d\n", topic_name, question->id);
+    } else {
+        fprintf(stderr, "[DB] No questions found for topic '%s'\n", topic_name);
+    }
+    
+    sqlite3_finalize(stmt);
+    return success;
+}
+
 // Get all difficulties
 int db_get_all_difficulties(char *output) {
     sqlite3_stmt *stmt;

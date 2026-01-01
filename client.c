@@ -619,55 +619,150 @@ void handle_leaderboard() {
 }
 
 void handle_practice() {
+    // Step 1: Get list of topics
     send_message("PRACTICE");
     char buffer[BUFFER_SIZE];
     if (recv_message(buffer, sizeof(buffer)) <= 0) {
-        printf("No response.\n"); return;
+        printf("No response from server\n");
+        return;
     }
-    if (strncmp(buffer, "PRACTICE_Q", 10) != 0) {
-        printf("%s\n", buffer); return;
+    
+    if (strncmp(buffer, "TOPICS ", 7) != 0) {
+        printf("%s\n", buffer);
+        return;
     }
-
-    char *lines[10];
-    int lineCount = 0;
-    char *p = strtok(buffer, "\n");
-    while (p && lineCount < 10) {
-        lines[lineCount++] = p;
-        p = strtok(NULL, "\n");
+    
+    // Parse topics: "TOPICS topic1:count|topic2:count|..."
+    const char *topics_str = buffer + 7;
+    printf("\n========== PRACTICE MODE ==========\n");
+    printf("Available topics:\n");
+    
+    // Display topics nicely
+    char topics_copy[BUFFER_SIZE];
+    strcpy(topics_copy, topics_str);
+    
+    int topic_num = 1;
+    char *token = strtok(topics_copy, "|");
+    while (token) {
+        printf("  %d. %s\n", topic_num, token);
+        topic_num++;
+        token = strtok(NULL, "|");
     }
-
-    if (lineCount < 6) { printf("Invalid question.\n"); return; }
-
-    char correct_ans = 0;
-    for (int i = 0; i < lineCount; i++) {
-        if (strncmp(lines[i], "ANSWER ", 7) == 0) {
-            correct_ans = toupper(lines[i][7]);
-            break;
-        }
-    }
-    if (!correct_ans) { printf("No answer.\n"); return; }
-
-    printf("\n--- Practice ---\n");
-    char *qtext = lines[0];
-    char *space = strchr(qtext, ' ');
-    if (space) qtext = space + 1;
-    printf("%s\n", qtext);
-    for (int i = 1; i <= 4; i++) {
-        printf("%s\n", lines[i]);
-    }
-
-    char ans[10];
+    
+    // Step 2: Loop practice until user quits
     while (1) {
-        printf("Your answer (A/B/C/D): ");
-        fgets(ans, sizeof(ans), stdin); trim_input_newline(ans);
-        if (strlen(ans) == 1 && strchr("ABCDabcd", ans[0])) {
-            ans[0] = toupper(ans[0]);
+        printf("\nEnter topic name (or 'quit' to exit): ");
+        char topic_name[64];
+        fgets(topic_name, sizeof(topic_name), stdin);
+        trim_input_newline(topic_name);
+        
+        if (strcasecmp(topic_name, "quit") == 0 || strlen(topic_name) == 0) {
+            printf("Practice mode ended.\n");
             break;
         }
-        printf("Invalid answer!\n");
+        
+        // Step 3: Request question for this topic
+        char request[256];
+        snprintf(request, sizeof(request), "PRACTICE %s", topic_name);
+        send_message(request);
+        
+        if (recv_message(buffer, sizeof(buffer)) <= 0) {
+            printf("No response from server\n");
+            break;
+        }
+        
+        // Check if question returned or error
+        if (strncmp(buffer, "FAIL", 4) == 0) {
+            printf("❌ %s\n", buffer);
+            continue;
+        }
+        
+        // Parse question: "PRACTICE_Q id|text|optA|optB|optC|optD|correct|topic"
+        if (strncmp(buffer, "PRACTICE_Q ", 11) != 0) {
+            printf("Invalid response: %s\n", buffer);
+            continue;
+        }
+        
+        // Parse pipe-separated fields
+        char question_data[BUFFER_SIZE];
+        strcpy(question_data, buffer + 11);
+        
+        char *fields[8];
+        int field_count = 0;
+        char *p = strtok(question_data, "|");
+        while (p && field_count < 8) {
+            fields[field_count++] = p;
+            p = strtok(NULL, "|");
+        }
+        
+        if (field_count < 8) {
+            printf("Invalid question data\n");
+            continue;
+        }
+        
+        // Extract fields
+        // int q_id = atoi(fields[0]);
+        char *q_text = fields[1];
+        char *opt_a = fields[2];
+        char *opt_b = fields[3];
+        char *opt_c = fields[4];
+        char *opt_d = fields[5];
+        char correct_ans = toupper(fields[6][0]);
+        // char *q_topic = fields[7];
+        
+        // Step 4: Display question
+        printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        printf("Question: %s\n\n", q_text);
+        printf("A) %s\n", opt_a);
+        printf("B) %s\n", opt_b);
+        printf("C) %s\n", opt_c);
+        printf("D) %s\n", opt_d);
+        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        
+        // Step 5: Get user answer
+        char user_answer[10];
+        while (1) {
+            printf("Your answer (A/B/C/D): ");
+            fgets(user_answer, sizeof(user_answer), stdin);
+            trim_input_newline(user_answer);
+            
+            if (strlen(user_answer) == 1 && strchr("ABCDabcd", user_answer[0])) {
+                user_answer[0] = toupper(user_answer[0]);
+                break;
+            }
+            printf("❌ Invalid input! Please enter A, B, C, or D\n");
+        }
+        
+        // Step 6: Send answer to server
+        char answer_cmd[256];
+        snprintf(answer_cmd, sizeof(answer_cmd), "ANSWER %c", user_answer[0]);
+        send_message(answer_cmd);
+        // Step 7: Get result
+        memset(buffer, 0, sizeof(buffer));
+        if (recv_message(buffer, sizeof(buffer)) <= 0) {
+            printf("No response from server\n");
+            break;
+        }
+        
+        // Trim any newlines
+        char *newline = strchr(buffer, '\n');
+        if (newline) *newline = '\0';
+        
+        printf("\n");
+        if (strncmp(buffer, "CORRECT", 7) == 0) {
+            printf("CORRECT! The answer is: %c\n", correct_ans);
+        } else if (strncmp(buffer, "WRONG", 5) == 0) {
+            // Parse: "WRONG|C" format
+            char correct_from_server = correct_ans;
+            if (strchr(buffer, '|')) {
+                char *pipe = strchr(buffer, '|');
+                correct_from_server = pipe[1];
+            }
+            printf("WRONG! The correct answer is: %c\n", correct_from_server);
+        } else {
+            printf("Response: %s\n", buffer);
+        }
     }
-
-    printf(ans[0] == correct_ans ? "Correct!\n" : "Wrong! Correct: %c\n", correct_ans);
 }
 
 void handle_add_question() {

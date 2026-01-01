@@ -46,6 +46,7 @@ int db_get_questions_with_distribution(const char *topic_filter, const char *dif
                                        DBQuestion *questions, int max_count);
 int db_get_all_topics(char *output);
 int db_get_all_difficulties(char *output);
+int db_get_random_question_by_topic(const char *topic_name, DBQuestion *question);  // 🔧 Get random question from topic
 
 // ==================== USERS ====================
 int db_add_user(const char *username, const char *password, const char *role);
