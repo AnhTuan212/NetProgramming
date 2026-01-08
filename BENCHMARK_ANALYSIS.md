@@ -1,4 +1,9 @@
-# Benchmark Compliance Analysis
+# Network Programming - Online Test System: Benchmark Analysis
+
+**Project:** Online Test System with Client-Server Architecture  
+**Technology Stack:** C (C11), TCP/IP Sockets, SQLite3, POSIX Threads  
+**Evaluation Date:** January 8, 2026  
+**Evaluation Framework:** Network Programming Course Rubric
 
 ---
 
@@ -7,15 +12,12 @@
 **Status:** Fully Implemented
 
 **Code Evidence:**
-- File: `client.c` (lines 28-35), `server.c` (lines 67-70)
-- Functions: `send_message()`, `recv_message()`, `send_msg()`
-
-**Explanation:**
-
-Stream-based I/O is implemented using standard socket read/write operations:
+- File: `client.c` (lines 18–30, 42–52)
+- File: `server.c` (lines 68–75)
+- Functions: `send_message()`, `recv_message()`, `send_msg()`, `trim_newline()`
 
 ```c
-// client.c - Lines 28-35
+// CLIENT: Stream-based message transmission
 void send_message(const char *msg) {
     char full_msg[BUFFER_SIZE];
     snprintf(full_msg, sizeof(full_msg), "%s\n", msg);
@@ -29,40 +31,51 @@ int recv_message(char *buffer, int size) {
     return n;
 }
 
-// server.c - Lines 67-70
+// SERVER: Stream-based message handling
 void send_msg(int sock, const char *msg) {
     char full[BUF_SIZE];
     snprintf(full, sizeof(full), "%s\n", msg);
     send(sock, full, strlen(full), 0);
 }
+
+void trim_newline(char *s) {
+    char *p = strchr(s, '\n'); if (p) *p = 0;
+    p = strchr(s, '\r'); if (p) *p = 0;
+}
 ```
 
-**Stream Handling Details:**
-- Uses `send()` for transmission (TCP stream socket)
-- Uses `read()` for reception (POSIX I/O)
-- Buffers sized appropriately (8KB)
-- Null-terminates received data
-- Appends newline for protocol delimiters
+**Explanation:**
+
+#### (1) Workflow Explanation
+
+Stream handling operates through a text-based protocol where messages are delimited by newline characters. The client continuously reads from standard input, packages commands into string buffers, appends newline terminators, and transmits via TCP sockets. The server receives these byte streams, extracts null-terminated strings, processes commands, and responds with formatted string messages. Both client and server employ buffered I/O with size-bounded operations to prevent buffer overflows. Message framing uses newline delimiters, allowing the receiver to detect message boundaries on the stream.
+
+#### (2) Network Knowledge Explanation
+
+Stream handling leverages TCP's connection-oriented, stream-based communication model. Unlike datagrams (UDP), TCP provides reliable, ordered byte delivery without inherent message boundaries. This implementation addresses stream demarcation through newline-terminated ASCII protocol design—a foundational approach in application-layer protocols (HTTP, SMTP, Telnet). The `send()` and `read()` system calls provide direct access to socket streams, bypassing higher-level abstractions. Buffer management with `BUFFER_SIZE` (8192 bytes) ensures efficient batching of small protocol messages into larger TCP segments, reducing context-switching overhead. The null-termination convention (`buffer[n] = 0`) bridges stream bytes to C string semantics.
 
 **Score Justification:**
-Standard socket stream I/O with proper buffering and null-termination. TCP guarantees ordered delivery. Full requirement satisfied.
+
+✓ Stream-based input/output fully implemented via `send()`/`read()` system calls  
+✓ Newline-delimited protocol enables proper message framing  
+✓ Bidirectional message transmission (send_message/recv_message) working correctly  
+✓ Buffer management with size constraints prevents overflow  
+✓ No fragmentation handling issues; protocol is simple and robust  
+
+**Award: 1/1 point**
 
 ---
 
-## 2. Server Socket I/O (2 points)
+## 2. Implementing Socket I/O Mechanism on the Server (2 points)
 
 **Status:** Fully Implemented
 
 **Code Evidence:**
-- File: `server.c` (lines 757-793)
-- Functions: `main()`, `handle_client()`
-
-**Explanation:**
-
-Complete socket lifecycle implemented:
+- File: `server.c` (lines 1046–1117)
+- Functions: `main()`, `handle_client()`, socket initialization, thread management
 
 ```c
-// server.c - Lines 767-793 (Socket Creation & Binding)
+// SERVER: Socket creation and initialization
 int server_sock = socket(AF_INET, SOCK_STREAM, 0);
 struct sockaddr_in addr = { 
     .sin_family = AF_INET, 
@@ -75,14 +88,14 @@ bind(server_sock, (struct sockaddr*)&addr, sizeof(addr));
 listen(server_sock, 10);
 printf("Server running on port %d\n", PORT);
 
-// Lines 776-793 (Accept Loop & Thread Creation)
+// SERVER: Concurrent client handling
 while (1) {
     struct sockaddr_in cli_addr;
     socklen_t len = sizeof(cli_addr);
     int cli_sock = accept(server_sock, (struct sockaddr*)&cli_addr, &len);
     if (cli_sock >= 0) {
         Client *cli = malloc(sizeof(Client));
-        cli->sock = cli_sock;
+        cli->sock = cli_sock; 
         cli->loggedIn = 0;
         pthread_t tid;
         pthread_create(&tid, NULL, handle_client, cli);
@@ -90,7 +103,7 @@ while (1) {
     }
 }
 
-// Lines 164-180 (Data Reception)
+// SERVER: Client handler (per-connection thread)
 void* handle_client(void *arg) {
     Client *cli = (Client*)arg;
     char buffer[BUF_SIZE];
@@ -99,9 +112,7 @@ void* handle_client(void *arg) {
         int bytes = recv(cli->sock, buffer, sizeof(buffer)-1, 0);
         if (bytes <= 0) break;
         trim_newline(buffer);
-        // ... command processing ...
-        
-        pthread_mutex_unlock(&lock);
+        // ... command parsing and execution ...
     }
     close(cli->sock);
     free(cli);
@@ -109,85 +120,68 @@ void* handle_client(void *arg) {
 }
 ```
 
-**Socket Operations:**
-- `socket()`: AF_INET + SOCK_STREAM = TCP
-- `setsockopt()`: SO_REUSEADDR prevents "Address in use" on restart
-- `bind()`: Associates socket with port 9000
-- `listen()`: Backlog of 10 pending connections
-- `accept()`: Blocks waiting for client connections
-- `recv()`: Receives data stream
-- Thread spawned per client (line 183-184)
+**Explanation:**
+
+#### (1) Workflow Explanation
+
+The server establishes a listening TCP socket on port 9000 using `socket(AF_INET, SOCK_STREAM, 0)`, binding to all available network interfaces (`INADDR_ANY`). The `SO_REUSEADDR` socket option enables rapid server restart without binding timeout delays. The main thread enters an infinite `accept()` loop, passively listening for incoming connection requests from clients. Upon receiving a connection, the server dynamically allocates a `Client` structure containing socket descriptor and session state, then spawns a dedicated POSIX thread via `pthread_create()` to handle that client independently. Each handler thread reads incoming byte streams via `recv()`, processes commands synchronously, and responds via `send()`. Thread detachment via `pthread_detach()` ensures kernel resource cleanup upon thread termination. The connection closes when the client sends 0 or fewer bytes (EOF condition).
+
+#### (2) Network Knowledge Explanation
+
+This implementation demonstrates the canonical TCP server architecture: socket creation, address family binding (IPv4), listening queue configuration, and connection demultiplexing. The three-way TCP handshake is implicit in `accept()`, which only returns after the kernel has established a fully connected socket. Thread-per-connection concurrency model is a classic design pattern enabling independent client sessions without blocking. Each client's socket descriptor (`cli_sock`) represents a bidirectional communication channel; the kernel maintains separate TCP state machines per connection. The `listen(server_sock, 10)` call sets the listen backlog to 10—the kernel queues up to 10 pending connections. Socket options like `SO_REUSEADDR` configure kernel behavior (permitting TIME_WAIT socket reuse). Non-blocking alternatives using `epoll()` or `select()` would improve scalability, but thread-per-connection is simple and correct for this scale.
 
 **Score Justification:**
-All socket operations correctly implemented: creation, binding, listening, accepting, and per-client data handling. TCP stream transmission/reception working. 2 points fully warranted.
+
+✓ Complete server socket initialization (creation, bind, listen)  
+✓ Concurrent handling via accept() loop with thread spawning  
+✓ Per-connection state management via Client structure  
+✓ Proper resource cleanup (close sockets, free memory)  
+✓ Robust thread lifecycle management (create, detach)  
+✓ Blocking I/O model adequate for expected load; no multiplexing optimizations  
+
+**Award: 2/2 points**
 
 ---
 
-## 3. Account Registration & Management (2 points)
+## 3. Account Registration and Management (2 points)
 
 **Status:** Fully Implemented
 
 **Code Evidence:**
-- File: `user_manager.c` (lines 1-27), `server.c` (lines 193-224)
-- Functions: `register_user_with_role()`, `validate_user()`, REGISTER command handler
-
-**Explanation:**
+- File: `server.c` (lines 255–282)
+- File: `db_init.c` (lines 32–43)
+- File: `db_queries.c` (lines 340–385)
+- Functions: `handle_client()` (REGISTER command), `db_add_user()`, `db_username_exists()`
 
 ```c
-// user_manager.c - Complete Implementation
-#define USER_FILE "data/users.txt"
-
-int register_user_with_role(const char *username, const char *password, const char *role) {
-    mkdir("data", 0755);
-    if (validate_user(username, password, NULL)) return 0;  // Exists
-
-    FILE *fp = fopen(USER_FILE, "a");
-    if (!fp) return -1;
-    fprintf(fp, "%s|%s|%s\n", username, password, role);
-    fclose(fp);
-    return 1;
-}
-
-int validate_user(const char *username, const char *password, char *role_out) {
-    FILE *fp = fopen(USER_FILE, "r");
-    if (!fp) return 0;
-
-    char line[256];
-    while (fgets(line, sizeof(line), fp)) {
-        char u[64], p[64], r[32] = "student";
-        if (sscanf(line, "%63[^|]|%63[^|]|%31s", u, p, r) == 3) {
-            if (strcmp(u, username) == 0 && strcmp(p, password) == 0) {
-                if (role_out) strcpy(role_out, r);
-                fclose(fp);
-                return 1;
-            }
-        }
-    }
-    fclose(fp);
-    return 0;
-}
-
-// server.c - REGISTER Command Handler (Lines 193-224)
+// SERVER: Registration command handler
 if (strcmp(cmd, "REGISTER") == 0) {
     char user[64], pass[64], role[32] = "student";
     char code[64] = "";
     int args = sscanf(buffer, "REGISTER %63s %63s %31s %63s", user, pass, role, code);
+    
     if (args < 2) {
         send_msg(cli->sock, "FAIL Usage: REGISTER <username> <password> [role] [code]\n");
     } else {
         if (strcasecmp(role, "admin") != 0 && strcasecmp(role, "student") != 0) 
             strcpy(role, "student");
+        
         int authorized = 1;
         if (strcasecmp(role, "admin") == 0) {
             if (strcmp(code, ADMIN_CODE) != 0) authorized = 0;
         }
+        
         if (!authorized) {
             send_msg(cli->sock, "FAIL Invalid Admin Secret Code!");
+            sprintf(log_msg, "Register failed for admin %s (Wrong Code)", user);
+            writeLog(log_msg);
         } else {
-            int result = register_user_with_role(user, pass, role);
-            if (result == 1) {
+            int user_id = db_add_user(user, pass, role);
+            if (user_id > 0) {
                 send_msg(cli->sock, "SUCCESS Registered. Please login.\n");
-            } else if (result == 0) {
+                sprintf(log_msg, "User %s registered as %s in database", user, role);
+                writeLog(log_msg);
+            } else if (user_id == 0) {
                 send_msg(cli->sock, "FAIL User already exists\n");
             } else {
                 send_msg(cli->sock, "FAIL Server error\n");
@@ -195,84 +189,130 @@ if (strcmp(cmd, "REGISTER") == 0) {
         }
     }
 }
-```
 
-**Features:**
-- User creation with role assignment
-- Duplicate detection (return 0 if exists)
-- Admin registration requires secret code (`network_programming`)
-- Credentials stored in `data/users.txt` with pipe delimiters
-- Server-side validation on every registration attempt
-- Error handling for file I/O failures
-
-**Score Justification:**
-Complete registration workflow with validation, duplicate checking, and role-based access control. Credentials persisted. 2 points fully warranted.
-
----
-
-## 4. Login & Session Management (2 points)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `server.c` (lines 260-330), `client.c` (lines 540-620), `db_queries.c` (lines 1-80)
-- Functions: LOGIN handler, `db_validate_user()`, `db_get_user_id()`
-
-**Explanation:**
-
-**Server LOGIN Handler:**
-
-```c
-// server.c - LOGIN Command (Lines 260-330)
-if (strcmp(command_type, "LOGIN") == 0) {
-    // Parse: LOGIN|username|password
-    char username[64], password[64];
-    strcpy(username, strtok(NULL, "|"));
-    strcpy(password, strtok(NULL, "|"));
+// DATABASE: User creation
+int db_add_user(const char *username, const char *password, const char *role) {
+    if (!username || !password || !role || !db) return -1;
     
-    // Validate credentials against users table
-    int user_id = db_validate_user(username, password);
+    // Check if user already exists
+    if (db_username_exists(username)) return 0;
     
-    if (user_id > 0) {
-        // Authentication successful
-        current_user_id = user_id;
-        strcpy(current_username, username);
-        
-        // Get user role
-        char user_role[32];
-        db_get_user_role(user_id, user_role);
-        strcpy(current_role, user_role);
-        
-        // Send success response with user_id and role
-        sprintf(response, "LOGIN_SUCCESS|%d|%s", user_id, user_role);
-    } else {
-        // Authentication failed
-        sprintf(response, "LOGIN_FAIL|Invalid credentials");
-        current_user_id = 0;
-    }
-}
-```
-
-**Database Validation:**
-
-```c
-// db_queries.c - User Validation (Lines 1-50)
-int db_validate_user(const char *username, const char *password) {
     sqlite3_stmt *stmt;
-    const char *query = "SELECT id FROM users WHERE username = ? AND password_hash = ?";
+    const char *query = "INSERT INTO users (username, password, role) VALUES (?, ?, ?)";
     
     if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Error preparing query: %s\n", sqlite3_errmsg(db));
         return -1;
     }
     
     sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, role, -1, SQLITE_STATIC);
     
-    // Hash password for comparison
-    char password_hash[256];
-    compute_hash(password, password_hash);
-    sqlite3_bind_text(stmt, 2, password_hash, -1, SQLITE_STATIC);
+    int result = -1;
+    if (sqlite3_step(stmt) == SQLITE_DONE) {
+        result = (int)sqlite3_last_insert_rowid(db);
+    }
     
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+// DATABASE: User validation
+int db_username_exists(const char *username) {
+    if (!username || !db) return 0;
+    
+    sqlite3_stmt *stmt;
+    const char *query = "SELECT 1 FROM users WHERE username = ?";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        return 0;
+    }
+    
+    sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+    int exists = (sqlite3_step(stmt) == SQLITE_ROW);
+    sqlite3_finalize(stmt);
+    return exists;
+}
+```
+
+**Explanation:**
+
+#### (1) Workflow Explanation
+
+Account registration occurs through a three-layer process: (1) Client sends `REGISTER username password [role] [code]` command via socket, (2) Server receives and parses the command, validating argument count and parameter types. Role defaults to "student" if unspecified; admin registration requires the hardcoded secret code `"network_programming"`. (3) Server calls `db_add_user()` which first checks username uniqueness via SQLite query. If unique, a prepared statement inserts credentials into the `users` table, returning the auto-generated user ID or error code (0 for duplicate, -1 for failure). (4) Server responds with success/failure message, logging all events to the audit trail. The entire transaction occurs synchronously within the client's handler thread, with mutual exclusion applied at the application level through command serialization (no concurrent multi-threaded writes to the same client connection).
+
+#### (2) Network Knowledge Explanation
+
+Registration exemplifies stateless, request–response protocol design over TCP. The server imposes no session state before login; any connected client can register. Username uniqueness is enforced at the database layer via unique constraints and existence checks, preventing race conditions when multiple clients simultaneously register identical usernames (SQLite serializes transactions, providing ACID guarantees). The role-based architecture (admin/student) introduces application-layer authorization logic distinct from authentication (identity verification). The admin secret code demonstrates a simple form of access control—not cryptographic, but sufficient for untrusted network environments. Parameterized queries using SQLite's binding API (`sqlite3_bind_text()`) mitigate SQL injection attacks by separating query structure from data. The stateless nature allows scale-out to multiple server instances with shared database backend.
+
+**Score Justification:**
+
+✓ Complete REGISTER command parsing with multi-role support  
+✓ Database schema includes users table with unique constraint on username  
+✓ Prepared statements prevent SQL injection  
+✓ Role-based differentiation (admin/student) with secret code validation  
+✓ Proper error handling: duplicate users (return 0), server errors (return -1)  
+✓ Audit logging of registration events  
+✓ No password encryption or hashing (plain text storage—security limitation, but not rubric requirement)  
+
+**Award: 2/2 points**
+
+---
+
+## 4. Login and Session Management (2 points)
+
+**Status:** Fully Implemented
+
+**Code Evidence:**
+- File: `server.c` (lines 283–309)
+- File: `db_queries.c` (lines 386–430)
+- File: `client.c` (lines 32, 51–65, 118–129)
+- Functions: `handle_client()` (LOGIN), `db_validate_user()`, `handle_login()`, session state variables
+
+```c
+// SERVER: Login command handler
+else if (strcmp(cmd, "LOGIN") == 0) {
+    char user[64], pass[64], role[32] = "student";
+    sscanf(buffer, "LOGIN %63s %63s", user, pass);
+    
+    int user_id = db_validate_user(user, pass);
+    if (user_id > 0) {
+        db_get_user_role(user, role);
+        strcpy(cli->username, user);
+        strcpy(cli->role, role);
+        cli->user_id = user_id;
+        cli->loggedIn = 1;
+        
+        sprintf(log_msg, "User %s logged in as %s", user, role);
+        writeLog(log_msg);
+        
+        char msg[128];
+        sprintf(msg, "SUCCESS %s", role);
+        send_msg(cli->sock, msg);
+    } else {
+        send_msg(cli->sock, "FAIL Invalid credentials");
+        sprintf(log_msg, "Login failed for user %s", user);
+        writeLog(log_msg);
+    }
+}
+
+// DATABASE: Login validation
+int db_validate_user(const char *username, const char *password) {
+    if (!username || !password || !db) return -1;
+    
+    sqlite3_stmt *stmt;
+    const char *query = "SELECT id FROM users WHERE username = ? AND password = ?";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Error preparing query: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    
+    sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
     int user_id = -1;
+    
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         user_id = sqlite3_column_int(stmt, 0);
     }
@@ -281,89 +321,59 @@ int db_validate_user(const char *username, const char *password) {
     return user_id;
 }
 
-// db_queries.c - Get User Role (Lines 52-80)
-int db_get_user_role(int user_id, char *role) {
-    sqlite3_stmt *stmt;
-    const char *query = "SELECT role FROM users WHERE id = ?";
-    
-    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        return -1;
-    }
-    
-    sqlite3_bind_int(stmt, 1, user_id);
-    
-    int result = -1;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        const char *role_str = (const char*)sqlite3_column_text(stmt, 0);
-        if (role_str) {
-            strcpy(role, role_str);
-            result = 1;
-        }
-    }
-    
-    sqlite3_finalize(stmt);
-    return result;
-}
-```
-
-**Client Session Tracking:**
-
-```c
-// client.c - Global Session State (Lines 1-30)
+// CLIENT: Session state maintenance
 int loggedIn = 0;
-int current_user_id = 0;
 char currentUser[100] = "";
 char currentRole[32] = "";
 char currentRoom[100] = "";
 int inTest = 0;
+int connected = 0;
 
-// client.c - Login Handler (Lines 540-620)
 void handle_login() {
-    char username[100], password[100], response[BUFFER_SIZE];
-    
+    char user[100], pass[100], buffer[BUFFER_SIZE];
     printf("Enter username: ");
-    fgets(username, sizeof(username), stdin);
-    trim_input_newline(username);
-    
+    fgets(user, sizeof(user), stdin); 
+    trim_input_newline(user);
     printf("Enter password: ");
-    fgets(password, sizeof(password), stdin);
-    trim_input_newline(password);
+    fgets(pass, sizeof(pass), stdin); 
+    trim_input_newline(pass);
+
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "LOGIN %s %s", user, pass);
+    send_message(cmd);
+    recv_message(buffer, sizeof(buffer));
+    printf("%s\n", buffer);
     
-    // Send credentials to server
-    char command[256];
-    snprintf(command, sizeof(command), "LOGIN|%s|%s", username, password);
-    send_message(command);
-    recv_message(response, sizeof(response));
-    
-    if (strncmp(response, "LOGIN_SUCCESS", 13) == 0) {
-        // Parse: LOGIN_SUCCESS|user_id|role
-        int user_id = 0;
-        char role[32];
-        
-        sscanf(response, "LOGIN_SUCCESS|%d|%31s", &user_id, role);
-        
+    if (strncmp(buffer, "SUCCESS", 7) == 0) {
         loggedIn = 1;
-        current_user_id = user_id;
-        strcpy(currentUser, username);
-        strcpy(currentRole, role);
-        
-        printf("Login successful as %s (%s)\n", username, role);
-    } else {
-        printf("Login failed: %s\n", response);
+        strcpy(currentUser, user);
+        sscanf(buffer, "SUCCESS %31s", currentRole);
     }
 }
 ```
 
-**Session Features:**
-- ✅ Database-backed authentication: User credentials validated against `users` table
-- ✅ Password hashing: Credentials securely stored and verified
-- ✅ Role-based access: User role retrieved and enforced for all commands
-- ✅ Session persistence: User ID and role maintained for duration of connection
-- ✅ Command guards: All protected operations check `current_user_id > 0` before proceeding
-- ✅ Logout support: Session cleared when connection closes
+**Explanation:**
+
+#### (1) Workflow Explanation
+
+Login occurs through credential verification and session instantiation. The client prompts for username and password, constructs a `LOGIN user pass` command, and transmits via TCP. The server parses credentials, queries the `users` table via prepared statement for matching username-password pairs, retrieving the user's ID upon successful match. The server then populates a per-connection `Client` structure with authenticated identity (`username`, `user_id`, `role`, `loggedIn=1`), establishing a session. This structure persists across all subsequent commands from this client within the same connection. The client receives `SUCCESS role` and mirrors session state (`loggedIn=1`, `currentUser`, `currentRole`), enabling role-based UI rendering and command validation on the client side. All login attempts (success or failure) are logged to the audit trail with timestamp and user identity. The session is terminated implicitly when the client disconnects or explicitly with EXIT command.
+
+#### (2) Network Knowledge Explanation
+
+Session management leverages TCP's connection-oriented semantics—a session is implicitly bound to a single TCP connection identified by a 4-tuple (client IP, client port, server IP, server port). The `Client` structure in the server maintains per-connection session state across command boundaries, eliminating the need for token-based sessions typical in stateless HTTP. The database `users` table serves as the persistent identity provider; the in-memory `Client` structure caches authentication context. This hybrid approach balances performance (no database lookups per command) with durability (identity survives server restarts via database). The login validation uses a combined WHERE clause (`username = ? AND password = ?`), matching only when both credentials are correct—a simple but vulnerable design (plain-text password storage, no salting or hashing). The audit logging captures session lifecycle events, enabling forensic analysis and intrusion detection.
 
 **Score Justification:**
-Complete authentication with database-backed credential validation. Role-based session management with per-user state tracking. Full integration with access control system. 2 points fully warranted.
+
+✓ Complete LOGIN command implementation with credential verification  
+✓ Per-connection session state (Client structure) persists across commands  
+✓ Server-side session: username, role, user_id, loggedIn flag  
+✓ Client-side session mirroring: currentUser, currentRole, loggedIn  
+✓ Database-backed identity with prepared statement queries  
+✓ Audit logging for login success/failure  
+✓ No token/cookie mechanism needed due to connection-oriented TCP  
+✓ Security limitation (plain-text passwords) does not affect rubric scoring for session management  
+
+**Award: 2/2 points**
 
 ---
 
@@ -372,1211 +382,41 @@ Complete authentication with database-backed credential validation. Role-based s
 **Status:** Fully Implemented
 
 **Code Evidence:**
-- File: `server.c` (lines 238, 239, 471, 635, etc.)
-- Pattern: Role checks before command execution
-
-**Explanation:**
+- File: `server.c` (lines 310–315, 743–750, 902–1010)
+- File: `client.c` (lines 52–94)
+- Functions: `handle_client()` (role-based command filtering), `print_banner()`, command handlers
 
 ```c
-// server.c - Access Control Pattern (Lines 471-475)
+// SERVER: Role-based access control
 else if (strcmp(cmd, "CREATE") == 0 && strcmp(cli->role, "admin") == 0) {
-    // Only admin can execute
+    // Only admin can create rooms
 }
-
-// Line 635
-else if (strcmp(cmd, "DELETE") == 0 && strcmp(cli->role, "admin") == 0) {
-    char name[64]; sscanf(buffer, "DELETE %63s", name);
-    Room *r = find_room(name);
-    if (!r) send_msg(cli->sock, "FAIL Room not found");
-    else if (strcmp(r->owner, cli->username) != 0) 
-        send_msg(cli->sock, "FAIL Not your room");
-    // Owner-only protection
+else if (strcmp(cmd, "DELETE_QUESTION") == 0 && strcmp(cli->role, "admin") == 0) {
+    // Only admin can delete questions
 }
-
-// Line 238
 else if (!cli->loggedIn) {
     send_msg(cli->sock, "FAIL Please login first");
 }
 
-// Line 679 (ADD_QUESTION admin-only)
-else if (strcmp(cmd, "ADD_QUESTION") == 0 && strcmp(cli->role, "admin") == 0) {
-    // Admin-only
-}
-```
-
-**Access Control Enforced:**
-- LOGIN required before any other command
-- Admin-only commands: CREATE, DELETE, PREVIEW, ADD_QUESTION, SEARCH_QUESTIONS, DELETE_QUESTION
-- Student-only logic in room joining
-- Owner checks for room deletion (admin cannot delete other admin's rooms)
-
-**Score Justification:**
-Role-based access control properly enforced. Login required. Admin/student separation maintained. 1 point fully warranted.
-
----
-
-## 6. Practice Mode Participation (1 point)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `server.c` (lines 549-561), `client.c` (lines 609-647)
-- Functions: PRACTICE command handler, `handle_practice()`
-
-**Explanation:**
-
-```c
-// server.c - PRACTICE Command (Lines 549-561)
-else if (strcmp(cmd, "PRACTICE") == 0) {
-    if (practiceQuestionCount == 0) 
-        send_msg(cli->sock, "FAIL No practice questions");
-    else {
-        int idx = rand() % practiceQuestionCount;
-        QItem *q = &practiceQuestions[idx];
-        char temp[BUF_SIZE];
-        snprintf(temp, sizeof(temp),
-            "PRACTICE_Q [%d/%d] %s\nA) %s\nB) %s\nC) %s\nD) %s\nANSWER %c\n",
-            idx+1, practiceQuestionCount, q->text, q->A, q->B, q->C, 
-            q->D, q->correct);
-        send_msg(cli->sock, temp);
-    }
-}
-
-// client.c - Practice Mode (Lines 609-647)
-void handle_practice() {
-    send_message("PRACTICE");
-    char buffer[BUFFER_SIZE];
-    if (recv_message(buffer, sizeof(buffer)) <= 0) {
-        printf("No response.\n"); return;
-    }
-    if (strncmp(buffer, "PRACTICE_Q", 10) != 0) {
-        printf("%s\n", buffer); return;
-    }
-    
-    // ... parse question ...
-    char correct_ans = 0;
-    for (int i = 0; i < lineCount; i++) {
-        if (strncmp(lines[i], "ANSWER ", 7) == 0) {
-            correct_ans = toupper(lines[i][7]);
-            break;
-        }
-    }
-    
-    // ... display and get user answer ...
-    printf(ans[0] == correct_ans ? "Correct!\n" : "Wrong! Correct: %c\n", correct_ans);
-}
-```
-
-**Practice Mode Features:**
-- Random question selection from practice bank
-- No scoring/tracking (immediate feedback only)
-- Correct answer provided to client
-- Separate from test mode (no time limit, no scoring saved)
-
-**Test Mode Distinction:**
-- Test mode: scored, timed, results persisted
-- Practice mode: immediate feedback, no tracking
-
-**Score Justification:**
-Practice mode fully implemented with random questions and instant feedback. Clearly distinct from test mode. 1 point fully warranted.
-
----
-
-## 7. Test Room Creation (2 points)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `server.c` (lines 271-340), `client.c` (lines 138-410)
-- Functions: CREATE command handler, `handle_create_room()` with interactive loop
-
-**Explanation:**
-
-```c
-// server.c - CREATE Command (Lines 271-340)
-else if (strcmp(cmd, "CREATE") == 0 && strcmp(cli->role, "admin") == 0) {
-    char name[64];
-    int numQ, dur;
-    char topic_filter[256] = "", diff_filter[256] = "";
-    
-    sscanf(buffer, "CREATE %63s %d %d", name, &numQ, &dur);
-    
-    // Parse TOPICS and DIFFICULTIES from command
-    char *topics_start = strstr(buffer, "TOPICS");
-    char *diffs_start = strstr(buffer, "DIFFICULTIES");
-    
-    if (topics_start) {
-        sscanf(topics_start, "TOPICS %255s", topic_filter);
-    }
-    if (diffs_start) {
-        sscanf(diffs_start, "DIFFICULTIES %255s", diff_filter);
-    }
-    
-    // Validate inputs
-    if (numQ < 1 || numQ > MAX_QUESTIONS_PER_ROOM) {
-        send_msg(cli->sock, "FAIL Number of questions must be 1-50");
-    } else if (dur < 10 || dur > 86400) {
-        send_msg(cli->sock, "FAIL Duration must be 10-86400 seconds");
-    } else if (find_room(name)) {
-        send_msg(cli->sock, "FAIL Room already exists");
-    } else {
-        // Load questions with filters via database
-        QItem temp_questions[MAX_QUESTIONS_PER_ROOM];
-        int loaded = (strlen(topic_filter) > 0 || strlen(diff_filter) > 0) ?
-            loadQuestionsWithFilters("data/questions.txt", temp_questions, numQ,
-                strlen(topic_filter) > 0 ? topic_filter : NULL,
-                strlen(diff_filter) > 0 ? diff_filter : NULL) :
-            loadQuestionsTxt("data/questions.txt", temp_questions, MAX_Q);
-        
-        if (loaded == 0) {
-            send_msg(cli->sock, "FAIL No questions match your criteria");
-        } else {
-            Room *r = &rooms[roomCount];
-            r->db_id = db_create_room(name, cli->user_id, dur/60);  // Store room ID
-            strcpy(r->name, name);
-            strcpy(r->owner, cli->username);
-            r->duration = dur;
-            r->started = 1;
-            r->start_time = time(NULL);
-            r->participantCount = 0;
-            r->numQuestions = (loaded < numQ) ? loaded : numQ;
-            memcpy(r->questions, temp_questions, r->numQuestions * sizeof(QItem));
-            
-            // Add questions to room in database
-            for (int i = 0; i < r->numQuestions; i++) {
-                db_add_question_to_room(r->db_id, temp_questions[i].id, i);
-            }
-            
-            roomCount++;
-            
-            char log_msg[256];
-            sprintf(log_msg, "Admin %s created room %s with %d questions", 
-                    cli->username, name, r->numQuestions);
-            writeLog(log_msg);
-            db_add_log(cli->user_id, "CREATE_ROOM", log_msg);
-            
-            send_msg(cli->sock, "SUCCESS Room created");
-            save_rooms();
-        }
-    }
-}
-
-// client.c - Interactive Room Creation Loop (Lines 138-410)
-void handle_create_room() {
-    if (!loggedIn || strcmp(currentRole, "admin") != 0) {
-        printf("Only admin can create rooms.\n"); return;
-    }
-    
-    char room[100];
-    int total_num, dur;
-    
-    printf("Room name: ");
-    fgets(room, sizeof(room), stdin); trim_input_newline(room);
-    printf("Total number of questions: ");
-    scanf("%d", &total_num); clear_stdin();
-    printf("Duration (seconds): ");
-    scanf("%d", &dur); clear_stdin();
-    
-    // Get topic counts from server
-    char buffer[BUFFER_SIZE];
-    send_message("GET_TOPICS");
-    recv_message(buffer, sizeof(buffer));
-    
-    printf("\n====== SELECT TOPICS AND QUESTION DISTRIBUTION ======\n");
-    
-    char topic_selection[512] = "";
-    
-    if (strncmp(buffer, "SUCCESS", 7) == 0) {
-        char *topicData = buffer + 8;
-        
-        // Parse topics with counts from format: Topic1(count)|Topic2(count)|...
-        char topics_copy[512];
-        strcpy(topics_copy, topicData);
-        
-        // Extract individual topics
-        char *topic_list[32];
-        int topic_counts[32];
-        int topic_count = 0;
-        char *saveptr;
-        char *token = strtok_r(topics_copy, "|", &saveptr);
-        
-        while (token && topic_count < 32) {
-            // Parse format: "Topic(count)"
-            char *paren = strchr(token, '(');
-            if (paren) {
-                // Extract topic name
-                int name_len = paren - token;
-                topic_list[topic_count] = malloc(name_len + 1);
-                strncpy(topic_list[topic_count], token, name_len);
-                topic_list[topic_count][name_len] = '\0';
-                
-                // Extract count from (count)
-                topic_counts[topic_count] = atoi(paren + 1);
-                topic_count++;
-            }
-            token = strtok_r(NULL, "|", &saveptr);
-        }
-        
-        // Display available topics
-        if (topic_count > 0) {
-            printf("\nAvailable topics:\n");
-            for (int i = 0; i < topic_count; i++) {
-                printf("  - %s (%d questions)\n", topic_list[i], topic_counts[i]);
-            }
-        }
-        
-        printf("\nEnter topics to select (format: topic_name:count_wanted)\n");
-        printf("Example: programming:5 geography:3 math:2\n");
-        printf("Enter '#' when done.\n\n");
-        
-        // Interactive loop for topic selection
-        while (1) {
-            printf("Topic selection: ");
-            fflush(stdout);
-            char input[128];
-            fgets(input, sizeof(input), stdin);
-            trim_input_newline(input);
-            
-            if (strcmp(input, "#") == 0) {
-                break;
-            }
-            
-            if (strlen(input) > 0) {
-                // Convert input to lowercase
-                for (int j = 0; input[j]; j++) {
-                    input[j] = tolower(input[j]);
-                }
-                
-                // Validate and add to selection
-                char *colon = strchr(input, ':');
-                if (colon) {
-                    int wanted = atoi(colon + 1);
-                    if (wanted > 0) {
-                        if (strlen(topic_selection) > 0) {
-                            strcat(topic_selection, " ");
-                        }
-                        strcat(topic_selection, input);
-                    } else {
-                        printf("  Invalid count (must be > 0)\n");
-                    }
-                } else {
-                    printf("  Invalid format. Use: topic_name:count\n");
-                }
-            }
-        }
-        
-        // Free allocated memory
-        for (int i = 0; i < topic_count; i++) {
-            free(topic_list[i]);
-        }
-    }
-    
-    // Get difficulty counts from server
-    send_message("GET_DIFFICULTIES");
-    recv_message(buffer, sizeof(buffer));
-    
-    printf("\n====== SELECT DIFFICULTIES AND DISTRIBUTION ======\n");
-    
-    char difficulty_selection[512] = "";
-    
-    if (strncmp(buffer, "SUCCESS", 7) == 0) {
-        // Similar parsing for difficulties...
-        // [Code omitted for brevity - same pattern as topics]
-    }
-    
-    char cmd[1024];
-    if (strlen(topic_selection) == 0 && strlen(difficulty_selection) == 0) {
-        // Use all questions mode
-        snprintf(cmd, sizeof(cmd), "CREATE %s %d %d", room, total_num, dur);
-    } else {
-        // Use distributed selection with topic and difficulty filters
-        snprintf(cmd, sizeof(cmd), "CREATE %s %d %d TOPICS %s DIFFICULTIES %s", 
-                 room, total_num, dur, topic_selection, difficulty_selection);
-    }
-    
-    send_message(cmd);
-    recv_message(buffer, sizeof(buffer));
-    if (strncmp(buffer, "SUCCESS", 7) == 0) {
-        printf("\nRoom created successfully!\n");
-    } else {
-        printf("\nError: %s\n", buffer);
-    }
-}
-```
-
-**Room Creation Features:**
-- **Interactive Client Loop:** New implementation with loop-based topic/difficulty selection
-- **Real-Time Display:** Shows all available topics/difficulties with question counts (using LEFT JOIN)
-- **User Input:** Accepts `topic_name:count` format, repeats until "#" entered
-- **Validation:** Name (no duplicates), question count (1-50), duration (10-86400 seconds)
-- **Filtering:** Topic/difficulty filtering via database queries
-- **Database Integration:** Stores room and question references in SQLite
-- **Persistence:** `save_rooms()` for backward compatibility
-- **Logging:** Event logged to both text file and database
-
-**GET_TOPICS/GET_DIFFICULTIES Integration:**
-- Server calls `db_get_all_topics()` using LEFT JOIN (shows ALL topics, even with 0 questions)
-- Response format: `Topic1(count)|Topic2(count)|...`
-- Client parses and displays in interactive menu
-- User selects topics via `topic:count` pairs
-
-**Lifecycle:**
-- Created: initialized with filtered questions
-- Active: accepts JOIN requests  
-- Deleted: removed from `rooms[]` array and database
-
-**Score Justification:**
-Complete room creation with full validation, interactive topic/difficulty selection, database integration, and persistence. Enhanced with real-time data display showing all available options. 2 points fully warranted.
-
----
-
-## 8. Viewing Test Room List (1 point)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `server.c` (lines 313-324), `client.c` (lines 352-368)
-- Functions: LIST command handler
-
-**Explanation:**
-
-```c
-// server.c - LIST Command (Lines 313-324)
-else if (strcmp(cmd, "LIST") == 0) {
-    char msg[4096] = "SUCCESS Rooms:\n";
-    if (roomCount == 0) strcat(msg, "No rooms.\n");
-    for (int i = 0; i < roomCount; i++) {
-        char line[256];
-        sprintf(line, "- %s (Owner: %s, Q: %d, Time: %ds)\n",
-                rooms[i].name, rooms[i].owner, rooms[i].numQuestions, 
-                rooms[i].duration);
-        strcat(msg, line);
-    }
-    send_msg(cli->sock, msg);
-}
-
-// client.c - LIST Display (Lines 352-368)
-void handle_list_rooms() {
-    send_message("LIST");
-    char buffer[BUFFER_SIZE];
-    recv_message(buffer, sizeof(buffer));
-    
-    printf("\n");
-    printf(strncmp(buffer, "SUCCESS", 7) == 0 ? buffer + 8 : buffer);
-    printf("\n");
-}
-```
-
-**Listing Features:**
-- All rooms visible to all authenticated users
-- Shows: name, owner, question count, duration
-- Formatted output
-- Empty state handling
-
-**Storage:**
-- In-memory: `Room rooms[]` array
-- Persistent: `data/rooms.txt` file
-
-**Score Justification:**
-Room list retrieval and display fully implemented. 1 point fully warranted.
-
----
-
-## 9. Joining Test Rooms (2 points)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `server.c` (lines 325-372), `client.c` (lines 369-445)
-- Functions: JOIN command handler, question retrieval loop
-
-**Explanation:**
-
-```c
-// server.c - JOIN Command (Lines 325-372)
-else if (strcmp(cmd, "JOIN") == 0) {
-    char name[64];
-    sscanf(buffer, "JOIN %63s", name);
+// PREVIEW: Admin-only, own-room ownership validation
+else if (strcmp(cmd, "PREVIEW") == 0 && strcmp(cli->role, "admin") == 0) {
+    char name[64]; 
+    sscanf(buffer, "PREVIEW %63s", name);
     Room *r = find_room(name);
-    if (!r) {
-        send_msg(cli->sock, "FAIL Room not found");
-    } else {
-        Participant *p = find_participant(r, cli->username);
-        if (!p) {
-            p = &r->participants[r->participantCount++];
-            strcpy(p->username, cli->username);
-            p->score = -1;
-            p->history_count = 0;
-            memset(p->answers, '.', MAX_QUESTIONS_PER_ROOM);
-            p->submit_time = 0;
-            p->start_time = time(NULL);
-        } else {
-            if (p->score != -1) {
-                if (p->history_count < MAX_ATTEMPTS) {
-                    p->score_history[p->history_count++] = p->score;
-                }
-                p->score = -1;
-                memset(p->answers, '.', MAX_QUESTIONS_PER_ROOM);
-                p->submit_time = 0;
-                p->start_time = time(NULL);
-            }
-        }
-        
-        int elapsed = (int)(time(NULL) - p->start_time);
-        int remaining = r->duration - elapsed;
-        if (remaining < 0) remaining = 0;
-
-        char msg[128];
-        sprintf(msg, "SUCCESS Joined %d %d", r->numQuestions, remaining);
-        send_msg(cli->sock, msg);
-        save_rooms();
-    }
+    if (!r) send_msg(cli->sock, "FAIL Room not found");
+    else if (strcmp(r->owner, cli->username) != 0) 
+        send_msg(cli->sock, "FAIL Not your room");
+    // ...
 }
 
-// server.c - GET_QUESTION Handler (Lines 373-396)
-else if (strcmp(cmd, "GET_QUESTION") == 0) {
-    char name[64]; int idx;
-    sscanf(buffer, "GET_QUESTION %63s %d", name, &idx);
-    Room *r = find_room(name);
-    if (!r || idx >= r->numQuestions) {
-        send_msg(cli->sock, "FAIL Invalid");
-    } else {
-        Participant *p = find_participant(r, cli->username);
-        QItem *q = &r->questions[idx];
-        
-        char currentAns = ' ';
-        if (p && p->score == -1) {
-            currentAns = p->answers[idx];
-            if (currentAns == '.') currentAns = ' ';
-        }
-
-        char temp[BUF_SIZE];
-        snprintf(temp, sizeof(temp),
-            "[%d/%d] %s\nA) %s\nB) %s\nC) %s\nD) %s\n\n[Your Selection: %c]\n",
-            idx+1, r->numQuestions, q->text, q->A, q->B, q->C, q->D, 
-            currentAns);
-        send_msg(cli->sock, temp);
-    }
-}
-
-// client.c - Join & Question Loop (Lines 369-445)
-void handle_join_room() {
-    if (strlen(currentRoom) > 0 && inTest) {
-        printf("Already in a test. Exit first.\n");
-        return;
-    }
-
-    // ... get room name ...
-    
-    char cmd[100];
-    snprintf(cmd, sizeof(cmd), "JOIN %s", room);
-    send_message(cmd);
-    recv_message(buffer, sizeof(buffer));
-    
-    if (strncmp(buffer, "SUCCESS", 7) != 0) {
-        printf("%s\n", buffer);
-        return;
-    }
-
-    int numQ = 0, remaining = 0;
-    sscanf(buffer, "SUCCESS %d %d", &numQ, &remaining);
-    
-    strcpy(currentRoom, room);
-    inTest = 1;
-    
-    for (int i = 0; i < numQ; i++) {
-        // ... display question, get answer, send ANSWER command ...
-    }
-}
-```
-
-**Join Features:**
-- Validation: room exists
-- Duplicate participant prevention
-- Automatic timer initialization (`start_time`)
-- Score marked as -1 (in-progress)
-- Answer array initialized with '.' (no answer)
-- Re-join support: stores previous score, resets state
-- Remaining time calculation
-- State synchronization: answers preserved on client request
-
-**Score Justification:**
-Complete join workflow with validation, state initialization, and synchronization. Multiple attempts tracked. 2 points fully warranted.
-
----
-
-## 10. Starting the Test (1 point)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `server.c` (lines 325-372)
-- Mechanism: JOIN command implicitly starts test
-
-**Explanation:**
-
-Test start is triggered by JOIN command:
-
-```c
-// server.c - Lines 347-356 (Start Initialization)
-if (!p) {
-    p = &r->participants[r->participantCount++];
-    strcpy(p->username, cli->username);
-    p->score = -1;
-    p->history_count = 0;
-    memset(p->answers, '.', MAX_QUESTIONS_PER_ROOM);
-    p->submit_time = 0;
-    p->start_time = time(NULL);  // ← Test starts here
-}
-
-// Remaining time calculation
-int elapsed = (int)(time(NULL) - p->start_time);
-int remaining = r->duration - elapsed;
-```
-
-**Test Start Behavior:**
-- `start_time` captured as `time(NULL)`
-- Timer begins countdown (duration seconds)
-- Multi-user coordination: all joiners get individual timers
-- Auto-submit thread monitors timeout (lines 155-162)
-
-**Coordination:**
-- No lock needed for timer (each participant independent)
-- Mutex protects participant addition to room
-- Time enforced server-side (prevents client clock manipulation)
-
-**Score Justification:**
-Test start properly implemented via JOIN with server-side timer. Auto-submit mechanism ensures completion. 1 point fully warranted.
-
----
-
-## 11. Changing Previously Selected Answers (1 point)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `server.c` (lines 397-407)
-- Function: ANSWER command handler
-
-**Explanation:**
-
-```c
-// server.c - ANSWER Command (Lines 397-407)
-else if (strcmp(cmd, "ANSWER") == 0) {
-    char roomName[64], ansChar;
-    int qIdx;
-    sscanf(buffer, "ANSWER %63s %d %c", roomName, &qIdx, &ansChar);
-    
-    Room *r = find_room(roomName);
-    if (r) {
-        Participant *p = find_participant(r, cli->username);
-        if (p && p->score == -1) {  // Only if test not submitted
-            if (qIdx >= 0 && qIdx < r->numQuestions) {
-                p->answers[qIdx] = ansChar;  // ← Update answer in-place
-            }
-        }
-    }
-}
-```
-
-**Answer Update Features:**
-- In-memory update: `p->answers[qIdx] = ansChar`
-- Validation: only during test (`score == -1`)
-- Validation: index bounds check
-- Multiple updates allowed: same question can be answered multiple times
-- No response required: silent update
-- Thread-safe: mutex held during operation
-
-**State Consistency:**
-- Answer persists in `Participant.answers[]` array
-- Retrieved on next GET_QUESTION request
-- Included in SUBMIT payload
-
-**Score Justification:**
-Answer changes fully supported with in-memory state consistency. Multiple attempts per question allowed. 1 point fully warranted.
-
----
-
-## 12. Submitting & Scoring the Test (2 points)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `server.c` (lines 575-620), `db_queries.c` (lines 850-950)
-- Functions: SUBMIT handler, `db_add_result()`, `db_record_answer()`
-
-**Explanation:**
-
-**Server SUBMIT Handler:**
-
-```c
-// server.c - SUBMIT Command Handler (Lines 575-620)
-if (strcmp(command_type, "SUBMIT") == 0) {
-    // Parse: SUBMIT|user_id|room_id|q1:answer1;q2:answer2;...
-    
-    int user_id = atoi(user_id_str);
-    int room_id = atoi(room_id_str);
-    
-    // Get room questions to validate answers
-    Room *room = get_room_details(room_id);
-    if (!room) {
-        sprintf(response, "ERROR|Room not found");
-        break;
-    }
-    
-    // Calculate score by comparing answers
-    int score = 0;
-    int total = room->question_count;
-    char *answer_string = strtok(NULL, "|");
-    
-    // Generate submission timestamp
-    char submission_date[64];
-    time_t now = time(NULL);
-    struct tm *timeinfo = localtime(&now);
-    strftime(submission_date, sizeof(submission_date), "%Y-%m-%d %H:%M:%S", timeinfo);
-    
-    // Persist result to database
-    int result_id = db_add_result(user_id, room_id, score, total, submission_date);
-    
-    if (result_id > 0) {
-        // Record each individual answer
-        char *answer_pair = strtok(answer_string, ";");
-        while (answer_pair != NULL) {
-            int question_id = atoi(strtok(answer_pair, ":"));
-            char *user_answer = strtok(NULL, ":");
-            
-            // Get correct answer from questions table
-            char correct_answer = get_correct_answer(question_id);
-            int is_correct = (user_answer[0] == correct_answer) ? 1 : 0;
-            
-            if (is_correct) score++;
-            
-            // Persist answer to answers table
-            db_record_answer(result_id, question_id, user_answer, &correct_answer, is_correct);
-            
-            answer_pair = strtok(NULL, ";");
-        }
-        
-        // Update result with final score
-        update_result_score(result_id, score);
-    }
-    
-    sprintf(response, "SUBMITTED|%d|%d/%d", user_id, score, total);
-}
-```
-
-**Database Persistence:**
-
-```c
-// db_queries.c - Result Persistence (Lines 850-900)
-int db_add_result(int user_id, int room_id, int score, int total, 
-                  const char *submission_date) {
-    sqlite3_stmt *stmt;
-    const char *query = "INSERT INTO results (user_id, room_id, score, total_questions, "
-                       "submission_date) VALUES (?, ?, ?, ?, ?)";
-    
-    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        return -1;
-    }
-    
-    sqlite3_bind_int(stmt, 1, user_id);
-    sqlite3_bind_int(stmt, 2, room_id);
-    sqlite3_bind_int(stmt, 3, score);
-    sqlite3_bind_int(stmt, 4, total);
-    sqlite3_bind_text(stmt, 5, submission_date, -1, SQLITE_STATIC);
-    
-    int result = sqlite3_step(stmt) == SQLITE_DONE ? sqlite3_last_insert_rowid(db) : -1;
-    sqlite3_finalize(stmt);
-    return result;
-}
-
-// db_queries.c - Answer Recording (Lines 902-950)
-int db_record_answer(int result_id, int question_id, const char *user_answer,
-                     const char *correct_answer, int is_correct) {
-    sqlite3_stmt *stmt;
-    const char *query = "INSERT INTO answers (result_id, question_id, user_answer, "
-                       "correct_answer, is_correct) VALUES (?, ?, ?, ?, ?)";
-    
-    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        return -1;
-    }
-    
-    sqlite3_bind_int(stmt, 1, result_id);
-    sqlite3_bind_int(stmt, 2, question_id);
-    sqlite3_bind_text(stmt, 3, user_answer, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 4, correct_answer, -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 5, is_correct);
-    
-    int result = sqlite3_step(stmt) == SQLITE_DONE ? 1 : -1;
-    sqlite3_finalize(stmt);
-    return result;
-}
-```
-
-**Scoring Algorithm:**
-- Compare each user answer (A/B/C/D) to correct answer from database
-- Count matches as correct
-- Final score = (correct answers / total questions)
-- Timestamp all submissions with current date/time
-- Store both aggregated result and per-question answers
-
-**Result Persistence Flow:**
-1. Client submits answers: `SUBMIT|user_id|room_id|q1:A;q2:C;...`
-2. Server validates answer format and counts correct
-3. Server calls `db_add_result()` → inserts to `results` table
-4. Server calls `db_record_answer()` for each question → inserts to `answers` table
-5. Database timestamps submission with `submission_date`
-6. Client receives `SUBMITTED|user_id|score/total` response
-
-**Features:**
-- ✅ Atomic persistence: Result and answers stored together
-- ✅ Score calculation: Based on question correctness matching
-- ✅ Audit trail: Every answer recorded with correctness flag
-- ✅ Timestamp tracking: Precise submission date/time
-- ✅ Idempotent: Results can be queried by result_id
-
-**Score Justification:**
-Complete submission workflow with proper database persistence, score calculation, and answer audit trail. Full integration with results table. 2 points fully warranted.
-
----
-
-## 13. Viewing Completed Test Results (1 point)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `server.c` (lines 428-456)
-- Function: RESULTS command handler
-
-**Explanation:**
-
-```c
-// server.c - RESULTS Command (Lines 428-456)
-else if (strcmp(cmd, "RESULTS") == 0) {
-    char name[64];
-    sscanf(buffer, "RESULTS %63s", name);
-    Room *r = find_room(name);
-    if (!r) send_msg(cli->sock, "FAIL Not found");
-    else {
-        char msg[4096] = "SUCCESS Results:\n";
-        for (int i = 0; i < r->participantCount; i++) {
-            Participant *p = &r->participants[i];
-            char line[512];
-            char historyStr[256] = "";
-            for(int k=0; k < p->history_count; k++) {
-                char tmp[32];
-                sprintf(tmp, "Att%d:%d/%d ", k+1, p->score_history[k], 
-                        r->numQuestions);
-                strcat(historyStr, tmp);
-            }
-            if (p->score != -1) {
-                char tmp[64];
-                sprintf(tmp, "Latest:%d/%d", p->score, r->numQuestions);
-                strcat(historyStr, tmp);
-            } else {
-                strcat(historyStr, "Doing...");
-            }
-            sprintf(line, "- %s | %s\n", p->username, historyStr);
-            strcat(msg, line);
-        }
-        send_msg(cli->sock, msg);
-    }
-}
-```
-
-**Result Display Features:**
-- Per-room results only (privacy)
-- Shows all participants and their scores
-- Attempt history tracked: "Att1:6/10 Att2:7/10 Latest:8/10"
-- In-progress tests shown as "Doing..."
-- Formatted output with participant names and scores
-
-**Access Control:**
-- Results available to any authenticated user
-- Can view results for any room
-
-**Score Justification:**
-Result retrieval and display fully implemented with attempt history and in-progress indicators. 1 point fully warranted.
-
----
-
-## 14. Activity Logging (1 point)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `logger.c` (lines 1-43), `server.c` (multiple)
-- Function: `writeLog()`
-
-**Explanation:**
-
-```c
-// logger.c - Complete Implementation
-#define LOG_FILE "data/logs.txt"
-
-void writeLog(const char *event) {
-    if (!event) return;
-
-    struct stat st = {0};
-    if (stat("data", &st) == -1) {
-        mkdir("data", 0700);
-    }
-
-    FILE *fp = fopen(LOG_FILE, "a");
-    if (!fp) return;
-
-    time_t now = time(NULL);
-    struct tm *t = localtime(&now);
-    char timebuf[64];
-    strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S", t);
-
-    fprintf(fp, "%s - %s\n", timebuf, event);
-    fclose(fp);
-}
-
-// Usage in server.c
-// Line 213
-sprintf(log_msg, "User %s registered as %s.", user, role);
-writeLog(log_msg);
-
-// Line 322
-sprintf(log_msg, "Admin %s created room %s with %d questions", 
-        cli->username, name, loaded);
-writeLog(log_msg);
-
-// Line 721
-sprintf(log_msg, "Admin %s added question ID %d to %s/%s", 
-        cli->username, new_id, new_q.topic, new_q.difficulty);
-writeLog(log_msg);
-```
-
-**Logged Events:**
-- User registration (with role)
-- Room creation
-- Room deletion
-- Question addition (with ID, topic, difficulty)
-- Question deletion
-- Server startup
-
-**Log Storage:**
-- File: `data/logs.txt`
-- Format: `YYYY-MM-DD HH:MM:SS - event description`
-- Append-only (no overwrites)
-- Human-readable timestamps
-
-**Score Justification:**
-Activity logging fully implemented with timestamps and event descriptions. Append-only audit trail. 1 point fully warranted.
-
----
-
-## 15. Question Classification (2 points)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `db_queries.c` (lines 444-490), `question_bank.c` (lines 25-32)
-- Functions: `db_get_all_topics()`, `db_get_all_difficulties()`, `get_all_topics_with_counts()`, `get_all_difficulties_with_counts()`
-
-**Explanation:**
-
-```c
-// db_queries.c - Get All Topics (Lines 444-466)
-int db_get_all_topics(char *output) {
-    sqlite3_stmt *stmt;
-    // Use LEFT JOIN to include ALL topics, even those with 0 questions
-    const char *query = "SELECT t.name, COUNT(q.id) FROM topics t "
-                       "LEFT JOIN questions q ON q.topic_id = t.id GROUP BY t.id ORDER BY t.name";
-    
-    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        return 0;
-    }
-    
-    strcpy(output, "");
-    int count = 0;
-    
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        const char *topic = (const char*)sqlite3_column_text(stmt, 0);
-        int topic_count = sqlite3_column_int(stmt, 1);
-        
-        if (count > 0) strcat(output, "|");
-        sprintf(output + strlen(output), "%s:%d", topic, topic_count);
-        count++;
-    }
-    
-    sqlite3_finalize(stmt);
-    return count;
-}
-
-// db_queries.c - Get All Difficulties (Lines 468-490)
-int db_get_all_difficulties(char *output) {
-    sqlite3_stmt *stmt;
-    // Use LEFT JOIN to include ALL difficulties, even those with 0 questions
-    const char *query = "SELECT d.name, COUNT(q.id) FROM difficulties d "
-                       "LEFT JOIN questions q ON q.difficulty_id = d.id GROUP BY d.id ORDER BY d.level";
-    
-    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        return 0;
-    }
-    
-    strcpy(output, "");
-    int count = 0;
-    
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        const char *difficulty = (const char*)sqlite3_column_text(stmt, 0);
-        int diff_count = sqlite3_column_int(stmt, 1);
-        
-        if (count > 0) strcat(output, "|");
-        sprintf(output + strlen(output), "%s:%d", difficulty, diff_count);
-        count++;
-    }
-    
-    sqlite3_finalize(stmt);
-    return count;
-}
-
-// question_bank.c - Wrapper Functions (Lines 25-32)
-int get_all_topics_with_counts(char *output) {
-    if (!output) return -1;
-    return db_get_all_topics(output);  // Delegates to SQLite implementation
-}
-
-int get_all_difficulties_with_counts(char *output) {
-    if (!output) return -1;
-    return db_get_all_difficulties(output);  // Delegates to SQLite implementation
-}
-
-// question_bank.c - Advanced Filtering (Lines 635-749)
-int loadQuestionsWithFilters(const char *filename, QItem *questions, int maxQ,
-                             const char *topic_filter, const char *diff_filter) {
-    // Loads questions matching BOTH topic AND difficulty filters
-    // Applies shuffling to randomize
-    // Uses database queries for efficient filtering
-}
-```
-
-**Classification Features:**
-- **Database-Driven:** Queries SQLite `topics` and `difficulties` tables
-- **LEFT JOIN Queries:** Shows ALL topics/difficulties, including those with 0 questions
-- **Format:** Output as `topic1:count1|topic2:count2|...`
-- **Case-Insensitive:** Topics normalized to lowercase during insertion
-- **Difficulty Levels:** Predefined (easy=1, medium=2, hard=3), ordered by level
-
-**Data Organization:**
-```sql
--- SQLite Schema
-topics (id, name UNIQUE, description, created_at)
-difficulties (id, name UNIQUE, level INTEGER, created_at)
-questions (id, text, option_a/b/c/d, correct_option, topic_id FK, difficulty_id FK, created_by, created_at)
-```
-
-**Filtering Capabilities:**
-- Filter by topic (e.g., "programming") with COUNT aggregation
-- Filter by difficulty (e.g., "medium") with COUNT aggregation
-- Combined filtering (topic AND difficulty via WHERE clause)
-- Question shuffling for randomization
-
-**Recent Fixes:**
-- ✅ **Fixed to show ALL topics/difficulties:** Changed INNER JOIN to LEFT JOIN
-- ✅ **Proper COUNT aggregation:** Shows 0 for empty categories instead of omitting them
-- ✅ **Database persistence:** All topic/difficulty data stored in normalized tables
-
-**Score Justification:**
-Topics and difficulties fully classified with database-backed enumeration. Comprehensive filtering and aggregation. Shows all available options for interactive selection. 2 points fully warranted.
-
----
-
-## 16. Test Data Storage & Statistics (2 points)
-
-**Status:** Fully Implemented
-
-**Code Evidence:**
-- File: `db_queries.c` (lines 850-977), `server.c` (lines 450-490), `stats.c` (lines 1-80)
-- Functions: `db_add_result()`, `db_record_answer()`, `db_renumber_questions()`, `get_all_results()`
-
-**Explanation:**
-
-**Result Persistence:**
-
-```c
-// db_queries.c - Store Test Results (Lines 850-900)
-int db_add_result(int user_id, int room_id, int score, int total, 
-                  const char *submission_date) {
-    sqlite3_stmt *stmt;
-    const char *query = "INSERT INTO results (user_id, room_id, score, total_questions, "
-                       "submission_date) VALUES (?, ?, ?, ?, ?)";
-    
-    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        return -1;
-    }
-    
-    sqlite3_bind_int(stmt, 1, user_id);
-    sqlite3_bind_int(stmt, 2, room_id);
-    sqlite3_bind_int(stmt, 3, score);
-    sqlite3_bind_int(stmt, 4, total);
-    sqlite3_bind_text(stmt, 5, submission_date, -1, SQLITE_STATIC);
-    
-    int result = sqlite3_step(stmt) == SQLITE_DONE ? sqlite3_last_insert_rowid(db) : -1;
-    sqlite3_finalize(stmt);
-    return result;
-}
-
-// db_queries.c - Store Individual Answers (Lines 902-950)
-int db_record_answer(int result_id, int question_id, const char *user_answer,
-                     const char *correct_answer, int is_correct) {
-    sqlite3_stmt *stmt;
-    const char *query = "INSERT INTO answers (result_id, question_id, user_answer, "
-                       "correct_answer, is_correct) VALUES (?, ?, ?, ?, ?)";
-    
-    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
-        return -1;
-    }
-    
-    sqlite3_bind_int(stmt, 1, result_id);
-    sqlite3_bind_int(stmt, 2, question_id);
-    sqlite3_bind_text(stmt, 3, user_answer, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 4, correct_answer, -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 5, is_correct);
-    
-    int result = sqlite3_step(stmt) == SQLITE_DONE ? 1 : -1;
-    sqlite3_finalize(stmt);
-    return result;
-}
-
-// db_queries.c - ID Maintenance (Lines 952-977)
-int db_renumber_questions(void) {
-    // After deletion, ensure continuous ID sequence without gaps
-    sqlite3_stmt *stmt;
-    int current_id = 1;
-    
-    const char *get_query = "SELECT id FROM questions ORDER BY id ASC";
-    
-    if (sqlite3_prepare_v2(db, get_query, -1, &stmt, NULL) != SQLITE_OK) {
-        return -1;
-    }
-    
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        int old_id = sqlite3_column_int(stmt, 0);
-        
-        if (old_id != current_id) {
-            // Update to fill gaps
-            char update_query[256];
-            snprintf(update_query, sizeof(update_query),
-                    "UPDATE questions SET id = %d WHERE id = %d",
-                    current_id, old_id);
-            
-            sqlite3_exec(db, update_query, NULL, NULL, NULL);
-        }
-        current_id++;
-    }
-    
-    sqlite3_finalize(stmt);
-    return current_id - 1;
-}
-```
-
-**Database Schema:**
-
-```sql
--- Results Table: Test submissions
-CREATE TABLE results (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    room_id INTEGER NOT NULL,
-    score INTEGER,
-    total_questions INTEGER,
-    submission_date TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (room_id) REFERENCES rooms(id)
-);
-
--- Answers Table: Individual question responses
-CREATE TABLE answers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    result_id INTEGER NOT NULL,
-    question_id INTEGER NOT NULL,
-    user_answer CHAR(1),
-    correct_answer CHAR(1),
-    is_correct INTEGER,
-    FOREIGN KEY (result_id) REFERENCES results(id),
-    FOREIGN KEY (question_id) REFERENCES questions(id)
-);
-```
-
-**Server Integration:**
-
-```c
-// server.c - SUBMIT Handler (Lines 450-490)
-if (strcmp(command_type, "SUBMIT") == 0) {
-    int user_id = atoi(user_id_str);
-    int room_id = atoi(room_id_str);
-    
-    // Calculate score from user answers
-    int score = 0, total = 0;
-    char *answers = strtok(NULL, "|");
-    
-    // Generate timestamp
-    char result_date[64];
-    time_t now = time(NULL);
-    strftime(result_date, sizeof(result_date), "%Y-%m-%d %H:%M:%S", localtime(&now));
-    
-    // Persist result to database
-    int result_id = db_add_result(user_id, room_id, score, total, result_date);
-    
-    if (result_id > 0) {
-        // Record each answer
-        char *answer_pair = strtok(answers, ";");
-        while (answer_pair) {
-            int q_id = atoi(strtok(answer_pair, ":"));
-            char *user_ans = strtok(NULL, ":");
-            char correct = get_correct_answer(q_id);
-            int is_correct = (user_ans[0] == correct) ? 1 : 0;
-            
-            db_record_answer(result_id, q_id, user_ans, &correct, is_correct);
-            answer_pair = strtok(NULL, ";");
-        }
-    }
-    
-    sprintf(response, "SUBMITTED|%d|%d/%d", user_id, score, total);
-}
-```
-
-**Storage & Statistics Features:**
-- **Atomic Persistence:** Results and answers stored together via transaction
-- **Answer Audit Trail:** Every user response logged with correctness flag
-- **ID Gap Management:** `db_renumber_questions()` maintains continuous sequences after deletion
-- **Timestamp Tracking:** All submissions recorded with precise date/time
-- **Foreign Key Integrity:** Cascading relationships ensure data consistency
-- **Statistics Aggregation:** JOIN queries for topic/difficulty performance analysis
-
-**Score Justification:**
-Complete result persistence with proper schema normalization, answer audit trail, and ID maintenance. Full statistics aggregation support. 2 points fully warranted.
-
----
-
-## 17. Graphical User Interface (3 points)
-
-**Status:** Partially Implemented (1.5 points)
-
-**Code Evidence:**
-- File: `client.c` (lines 47-100), `server.c` (output)
-- Functions: `print_banner()`, menu handling
-
-**Explanation:**
-
-```c
-// client.c - Text-Based UI (Lines 47-100)
+// CLIENT: Role-based menu rendering
 void print_banner() {
     system("clear");
     printf("====== ONLINE TEST CLIENT ======\n");
     if (loggedIn) {
         printf("Logged in as: %s (%s)\n", currentUser, currentRole);
-        if (strlen(currentRoom) > 0) printf("In Room: %s\n", currentRoom);
-        if (inTest) printf("*** DOING TEST ***\n");
-    } else {
-        printf("Not logged in\n");
     }
-    printf("===========================================\n");
-
+    
     if (!loggedIn) {
         printf("1. Login\n");
         printf("2. Register\n");
@@ -1598,240 +438,653 @@ void print_banner() {
         printf("6. View Leaderboard\n");
         printf("7. Practice\n");
     }
-    printf("0. Exit\n");
-    printf("===========================================\n>> ");
 }
 ```
 
-**UI Features:**
-- Menu-driven interface with role-based options
-- Status display (logged in user, current room, test status)
-- Clear screen on menu update
-- Numbered options for navigation
-- Question display with formatting:
-  ```
-  [1/10] What is 2+2?
-  A) 1
-  B) 2
-  C) 3
-  D) 4
-  
-  [Your Selection: ]
-  ```
+**Explanation:**
 
-**Limitations:**
-- **Text-only:** No graphical widgets (buttons, windows)
-- **CLI-based:** Command-line interface, not GUI
-- **No graphics library:** No GTK, Qt, or Windows Forms
-- **Meets: Partial GUI requirement** (interactive text UI exists)
+#### (1) Workflow Explanation
 
-**Graphical Features Available:**
-- Formatted output with boxes
-- Status indicators
-- Progress display (e.g., "[1/10]")
-- Color-capable via ANSI codes (not implemented)
+Access control operates at two layers: (1) **Server-side authorization** enforces role-based command filtering before execution. Commands like CREATE, DELETE_QUESTION, PREVIEW are guarded by `strcmp(cli->role, "admin")` checks; if the client is not authenticated or lacks the required role, the server responds with `FAIL`. Ownership validation adds granularity—an admin can only preview or delete rooms they created, checked via `strcmp(r->owner, cli->username)`. (2) **Client-side UI adaptation** renders role-specific menu options after login. An admin user sees creation/deletion/preview options, while students see test participation options only. This dual-layer approach prevents unauthorized command execution even if a malicious client constructs forbidden commands manually.
+
+#### (2) Network Knowledge Explanation
+
+Access control in network applications must enforce authorization at the server, never trusting client-side filtering alone (any TCP client can send arbitrary commands). The implementation uses the session state established during login (`cli->role`, `cli->username`) as the basis for authorization decisions. This pattern follows the principle of least privilege—each session receives only the minimum permissions needed for its role. The ownership check (`strcmp(r->owner, cli->username)`) demonstrates discretionary access control (DAC), where resource creators retain ownership. The server-side enforcement is stateless per command—each command independently verifies the current session's authorization, eliminating token expiration complexity. No cryptographic credentials are exchanged; the TCP connection itself is the authentication token, valid only for the duration of the session.
 
 **Score Justification:**
-Interactive command-line UI present with menus, formatted output, and status display. However, not a true GUI (no graphical toolkit). Partial credit: **1.5 points** (1-2 point range).
+
+✓ Role-based authorization (admin vs. student) enforced at server  
+✓ Command-level access control (CREATE, DELETE only for admin)  
+✓ Ownership-based access control (preview/delete own rooms only)  
+✓ Client-side UI respects roles (prevents user confusion)  
+✓ Clear deny-by-default pattern (unauthorized commands rejected)  
+✓ Simple, effective access matrix (2 roles × command permissions)  
+
+**Award: 1/1 point**
 
 ---
 
-## 18. Advanced Features (3 points)
+## 6. Participating in Practice Mode (1 point)
 
 **Status:** Fully Implemented
 
 **Code Evidence:**
-- File: Multiple files
-- Features: Database, concurrent clients, timeout monitoring, re-attempt tracking
+- File: `server.c` (lines 800–846)
+- File: `client.c` (lines 670–806)
+- File: `db_queries.c` (lines 1650–1700)
+- Functions: `handle_client()` (PRACTICE), `handle_practice()`, `db_get_random_question_by_topic()`
+
+```c
+// SERVER: Practice mode implementation
+else if (strcmp(cmd, "PRACTICE") == 0) {
+    char topic_name[64] = "";
+    char *ptr = strchr(buffer, ' ');
+    if (ptr != NULL) {
+        sscanf(ptr + 1, "%63s", topic_name);
+    }
+    
+    if (strlen(topic_name) == 0) {
+        // First call: send list of topics
+        char topics_output[2048];
+        int topic_count = db_get_all_topics(topics_output);
+        
+        if (topic_count == 0) {
+            send_msg(cli->sock, "FAIL No topics available");
+        } else {
+            char response[2048];
+            snprintf(response, sizeof(response), "TOPICS %s", topics_output);
+            send_msg(cli->sock, response);
+        }
+    } else {
+        // Second call: PRACTICE <topic_name> - return random question
+        DBQuestion question;
+        if (!db_get_random_question_by_topic(topic_name, &question)) {
+            char error[256];
+            snprintf(error, sizeof(error), "FAIL No questions found for topic '%s'", topic_name);
+            send_msg(cli->sock, error);
+        } else {
+            char response[BUF_SIZE];
+            snprintf(response, sizeof(response),
+                    "PRACTICE_Q %d|%s|%s|%s|%s|%s|%c|%s",
+                    question.id, question.text,
+                    question.option_a, question.option_b, 
+                    question.option_c, question.option_d,
+                    question.correct_option, question.topic);
+            send_msg(cli->sock, response);
+            
+            cli->current_question_id = question.id;
+            cli->current_question_correct = question.correct_option;
+        }
+    }
+}
+
+// CLIENT: Practice mode user interaction
+void handle_practice() {
+    send_message("PRACTICE");
+    char buffer[BUFFER_SIZE];
+    if (recv_message(buffer, sizeof(buffer)) <= 0) return;
+    
+    if (strncmp(buffer, "TOPICS ", 7) != 0) {
+        printf("%s\n", buffer);
+        return;
+    }
+    
+    const char *topics_str = buffer + 7;
+    printf("\n========== PRACTICE MODE ==========\n");
+    printf("Available topics:\n");
+    
+    while (1) {
+        printf("\nEnter topic name (or 'quit' to exit): ");
+        char topic_name[64];
+        fgets(topic_name, sizeof(topic_name), stdin);
+        trim_input_newline(topic_name);
+        
+        if (strcasecmp(topic_name, "quit") == 0 || strlen(topic_name) == 0) {
+            printf("Practice mode ended.\n");
+            break;
+        }
+        
+        char request[256];
+        snprintf(request, sizeof(request), "PRACTICE %s", topic_name);
+        send_message(request);
+        
+        if (recv_message(buffer, sizeof(buffer)) <= 0) break;
+        
+        if (strncmp(buffer, "FAIL", 4) == 0) {
+            printf("❌ %s\n", buffer);
+            continue;
+        }
+        
+        // Parse and display question
+        if (strncmp(buffer, "PRACTICE_Q ", 11) != 0) {
+            printf("Invalid response: %s\n", buffer);
+            continue;
+        }
+        
+        // Extract and display question fields
+        char question_data[BUFFER_SIZE];
+        strcpy(question_data, buffer + 11);
+        
+        char *fields[8];
+        int field_count = 0;
+        char *p = strtok(question_data, "|");
+        while (p && field_count < 8) {
+            fields[field_count++] = p;
+            p = strtok(NULL, "|");
+        }
+        
+        printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        printf("Question: %s\n\n", fields[1]);
+        printf("A) %s\n", fields[2]);
+        printf("B) %s\n", fields[3]);
+        printf("C) %s\n", fields[4]);
+        printf("D) %s\n", fields[5]);
+        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        
+        char user_answer[10];
+        while (1) {
+            printf("Your answer (A/B/C/D): ");
+            fgets(user_answer, sizeof(user_answer), stdin);
+            trim_input_newline(user_answer);
+            
+            if (strlen(user_answer) == 1 && strchr("ABCDabcd", user_answer[0])) {
+                user_answer[0] = toupper(user_answer[0]);
+                break;
+            }
+        }
+        
+        char answer_cmd[256];
+        snprintf(answer_cmd, sizeof(answer_cmd), "ANSWER %c", user_answer[0]);
+        send_message(answer_cmd);
+        
+        memset(buffer, 0, sizeof(buffer));
+        if (recv_message(buffer, sizeof(buffer)) <= 0) break;
+        
+        printf("\n");
+        if (strncmp(buffer, "CORRECT", 7) == 0) {
+            printf("✓ CORRECT! The answer is: %c\n", fields[6][0]);
+        } else if (strncmp(buffer, "WRONG", 5) == 0) {
+            char correct_from_server = fields[6][0];
+            if (strchr(buffer, '|')) {
+                char *pipe = strchr(buffer, '|');
+                correct_from_server = pipe[1];
+            }
+            printf("✗ WRONG! The correct answer is: %c\n", correct_from_server);
+        }
+    }
+}
+
+// DATABASE: Random question retrieval by topic
+int db_get_random_question_by_topic(const char *topic_name, DBQuestion *question) {
+    if (!topic_name || !question || !db) return 0;
+    
+    char query[512];
+    snprintf(query, sizeof(query),
+             "SELECT q.id, q.text, q.option_a, q.option_b, q.option_c, q.option_d, "
+             "q.correct_option, t.name, d.name "
+             "FROM questions q "
+             "JOIN topics t ON q.topic_id = t.id "
+             "JOIN difficulties d ON q.difficulty_id = d.id "
+             "WHERE LOWER(t.name) = LOWER(?) "
+             "ORDER BY RANDOM() LIMIT 1");
+    
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Error preparing query: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    sqlite3_bind_text(stmt, 1, topic_name, -1, SQLITE_STATIC);
+    
+    int found = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        question->id = sqlite3_column_int(stmt, 0);
+        strncpy(question->text, (const char*)sqlite3_column_text(stmt, 1), 255);
+        strncpy(question->option_a, (const char*)sqlite3_column_text(stmt, 2), 127);
+        strncpy(question->option_b, (const char*)sqlite3_column_text(stmt, 3), 127);
+        strncpy(question->option_c, (const char*)sqlite3_column_text(stmt, 4), 127);
+        strncpy(question->option_d, (const char*)sqlite3_column_text(stmt, 5), 127);
+        question->correct_option = *(const char*)sqlite3_column_text(stmt, 6);
+        found = 1;
+    }
+    
+    sqlite3_finalize(stmt);
+    return found;
+}
+```
 
 **Explanation:**
 
-### Advanced Feature 1: SQLite Database Migration (1 point)
+#### (1) Workflow Explanation
 
-**Implementation:**
-- Automatic detection of first run (check if `users` table empty)
-- One-time migration from text files to SQLite
-- Maintains backward compatibility
-- Both storage mechanisms work in parallel
+Practice mode operates in a request-loop pattern. The client initiates with `PRACTICE` (no arguments), requesting the server's topic list. The server queries the database for all available topics and returns `TOPICS topic1:count|topic2:count|...` via pipe-delimited format. The client displays topics and prompts the user to select a topic name. Upon user input, the client sends `PRACTICE topic_name`. The server queries the database for a random question from that topic using SQL's `ORDER BY RANDOM()` clause, returning a structured response `PRACTICE_Q id|text|optA|optB|optC|optD|correct|topic`. The client parses this pipe-delimited response, displays the question with formatted options, and prompts for the user's answer. The user selects A/B/C/D, and the client sends `ANSWER answer_char`. The server compares the answer against the correct option stored in `cli->current_question_correct`, responding with `CORRECT` or `WRONG|correct_char`. The loop continues until the user selects "quit", allowing indefinite practice across all topics.
 
-```c
-// server.c - Lines 742-751 (Migration Check)
-int needs_migration = 0;
+#### (2) Network Knowledge Explanation
 
-const char *check_users = "SELECT COUNT(*) FROM users";
-if (sqlite3_prepare_v2(db, check_users, -1, &stmt, NULL) == SQLITE_OK) {
-    if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_int(stmt, 0) == 0) {
-        needs_migration = 1;
-    }
-    sqlite3_finalize(stmt);
-}
+Practice mode leverages a stateful request-response protocol layered over TCP. Unlike REST or HTTP, which are stateless per request, each practice session maintains context in the `Client` structure (`current_question_id`, `current_question_correct`). The multi-step exchange (PRACTICE → TOPICS → PRACTICE topic → PRACTICE_Q → ANSWER → CORRECT/WRONG) represents a conversational protocol typical of interactive network applications. The pipe-delimited protocol simplifies parsing on both client and server while remaining human-readable. The SQL `ORDER BY RANDOM()` clause provides pseudo-random question selection, ensuring variety across multiple practice attempts. The server's caching of the correct answer in `cli->current_question_correct` enables stateless answer validation on the next request without re-querying the database. This design prioritizes simplicity and interactivity over performance, suitable for a single user per connection.
 
-if (needs_migration) {
-    printf("Performing initial data migration from text files...\n");
-    migrate_from_text_files(DATA_DIR);
-    verify_migration();
-}
-```
+**Score Justification:**
 
-**Value:** Provides production-ready persistence with ACID guarantees and future scalability.
+✓ Complete practice mode workflow: topic selection → random question → answer checking  
+✓ Server-side question randomization via SQL RANDOM()  
+✓ Client-side multi-step interaction loop  
+✓ Pipe-delimited protocol for structured data transmission  
+✓ Immediate feedback on correctness with correct answer display  
+✓ Stateful protocol maintaining current question context  
+✓ Supports indefinite practice across topics  
 
-### Advanced Feature 2: Concurrent Client Handling (1 point)
+**Award: 1/1 point**
 
-**Implementation:**
-- Thread-per-client model with mutex synchronization
-- Supports 50+ concurrent participants
-- No bottleneck from global lock (held only during data modification)
-- Automatic cleanup on client disconnect
+---
+
+## 7. Creating Test Rooms (2 points)
+
+**Status:** Fully Implemented
+
+**Code Evidence:**
+- File: `server.c` (lines 310–500)
+- File: `client.c` (lines 130–412)
+- File: `db_queries.c` (lines 600–700, 1400–1500)
+- Functions: `handle_client()` (CREATE), `handle_create_room()`, `db_create_room()`, `db_get_questions_with_distribution()`
 
 ```c
-// server.c - Concurrent Model
-while (1) {
-    int cli_sock = accept(...);
-    pthread_t tid;
-    pthread_create(&tid, NULL, handle_client, (Client*)cli);
-    pthread_detach(tid);  // Auto cleanup
-}
-```
-
-**Value:** Enables simultaneous test participation by multiple students.
-
-### Advanced Feature 3: Auto-Submit Timeout Monitoring (1 point)
-
-**Implementation:**
-- Background thread monitors all participants
-- Auto-submits after duration expires + 2 second grace
-- Prevents incomplete submissions
-
-```c
-// server.c - Lines 149-162 (Monitor Thread)
-void* monitor_exam_thread(void *arg) {
-    while (1) {
-        sleep(1);
-        pthread_mutex_lock(&lock);
-        time_t now = time(NULL);
+// SERVER: CREATE room command handler
+else if (strcmp(cmd, "CREATE") == 0 && strcmp(cli->role, "admin") == 0) {
+    char name[64], topic_filter[512] = "", diff_filter[512] = "";
+    int numQ, dur;
+    
+    int parsed = sscanf(buffer, "CREATE %63s %d %d", name, &numQ, &dur);
+    
+    if (parsed != 3) {
+        send_msg(cli->sock, "FAIL Usage: CREATE <name> <numQ> <duration> [TOPICS ...] [DIFFICULTIES ...]");
+    } else {
+        // Parse TOPICS section
+        char *topics_start = strstr(buffer, "TOPICS ");
+        if (topics_start) {
+            topics_start += 7;
+            char *difficulties_start = strstr(topics_start, "DIFFICULTIES");
+            
+            if (difficulties_start) {
+                int topics_len = difficulties_start - topics_start;
+                strncpy(topic_filter, topics_start, topics_len);
+                topic_filter[topics_len] = '\0';
+            } else {
+                strcpy(topic_filter, topics_start);
+            }
+            
+            int i = strlen(topic_filter) - 1;
+            while (i >= 0 && isspace((unsigned char)topic_filter[i])) {
+                topic_filter[i] = '\0';
+                i--;
+            }
+        }
         
-        for (int i = 0; i < roomCount; i++) {
-            for (int j = 0; j < rooms[i].participantCount; j++) {
-                Participant *p = &rooms[i].participants[j];
-                if (p->score == -1 && p->start_time > 0) {
-                    double elapsed = difftime(now, p->start_time);
-                    if (elapsed >= rooms[i].duration + 2) {
-                        p->score = calculate_score(...);
-                        printf("Auto-submitted for user %s\n", p->username);
-                        save_results();
+        // Parse DIFFICULTIES section
+        char *difficulties_start = strstr(buffer, "DIFFICULTIES ");
+        if (difficulties_start) {
+            difficulties_start += 13;
+            strcpy(diff_filter, difficulties_start);
+            
+            int i = strlen(diff_filter) - 1;
+            while (i >= 0 && isspace((unsigned char)diff_filter[i])) {
+                diff_filter[i] = '\0';
+                i--;
+            }
+        }
+        
+        // Validate inputs
+        if (numQ < 1 || numQ > MAX_QUESTIONS_PER_ROOM) {
+            send_msg(cli->sock, "FAIL Number of questions must be 1-50");
+        } else if (dur < 10 || dur > 86400) {
+            send_msg(cli->sock, "FAIL Duration must be 10-86400 seconds");
+        } else if (find_room(name)) {
+            send_msg(cli->sock, "FAIL Room already exists");
+        } else {
+            // Load questions from database using filtered queries
+            QItem temp_questions[MAX_QUESTIONS_PER_ROOM];
+            int loaded = 0;
+            
+            if (strlen(topic_filter) > 0 && strlen(diff_filter) > 0) {
+                // Path 1: Both filters
+                int topic_counts[32];
+                int difficulty_counts[3];
+                
+                char *topic_ids = db_parse_topic_filter(topic_filter, topic_counts, 32);
+                db_parse_difficulty_filter(diff_filter, difficulty_counts);
+                
+                if (topic_ids && (difficulty_counts[0] + difficulty_counts[1] + difficulty_counts[2]) == numQ) {
+                    DBQuestion db_temp_questions[MAX_QUESTIONS_PER_ROOM];
+                    int q_idx = 0;
+                    
+                    if (difficulty_counts[0] > 0) {
+                        int loaded_easy = db_get_random_filtered_questions(topic_ids, 1, difficulty_counts[0], db_temp_questions + q_idx);
+                        q_idx += loaded_easy;
                     }
+                    
+                    if (difficulty_counts[1] > 0) {
+                        int loaded_med = db_get_random_filtered_questions(topic_ids, 2, difficulty_counts[1], db_temp_questions + q_idx);
+                        q_idx += loaded_med;
+                    }
+                    
+                    if (difficulty_counts[2] > 0) {
+                        int loaded_hard = db_get_random_filtered_questions(topic_ids, 3, difficulty_counts[2], db_temp_questions + q_idx);
+                        q_idx += loaded_hard;
+                    }
+                    
+                    loaded = q_idx;
+                    
+                    for (int i = 0; i < loaded; i++) {
+                        temp_questions[i].id = db_temp_questions[i].id;
+                        strcpy(temp_questions[i].text, db_temp_questions[i].text);
+                        strcpy(temp_questions[i].A, db_temp_questions[i].option_a);
+                        strcpy(temp_questions[i].B, db_temp_questions[i].option_b);
+                        strcpy(temp_questions[i].C, db_temp_questions[i].option_c);
+                        strcpy(temp_questions[i].D, db_temp_questions[i].option_d);
+                        temp_questions[i].correct = db_temp_questions[i].correct_option;
+                        strcpy(temp_questions[i].topic, db_temp_questions[i].topic);
+                        strcpy(temp_questions[i].difficulty, db_temp_questions[i].difficulty);
+                    }
+                }
+            } else if (strlen(topic_filter) > 0 && strlen(diff_filter) == 0) {
+                // Path 2: Topic filter only
+                DBQuestion db_temp_questions[MAX_QUESTIONS_PER_ROOM];
+                loaded = db_get_questions_with_distribution(topic_filter, "#", db_temp_questions, numQ);
+                
+                for (int i = 0; i < loaded; i++) {
+                    temp_questions[i].id = db_temp_questions[i].id;
+                    strcpy(temp_questions[i].text, db_temp_questions[i].text);
+                    strcpy(temp_questions[i].A, db_temp_questions[i].option_a);
+                    strcpy(temp_questions[i].B, db_temp_questions[i].option_b);
+                    strcpy(temp_questions[i].C, db_temp_questions[i].option_c);
+                    strcpy(temp_questions[i].D, db_temp_questions[i].option_d);
+                    temp_questions[i].correct = db_temp_questions[i].correct_option;
+                    strcpy(temp_questions[i].topic, db_temp_questions[i].topic);
+                    strcpy(temp_questions[i].difficulty, db_temp_questions[i].difficulty);
+                }
+            } else {
+                // Path 3: No filters - load random questions
+                DBQuestion db_temp_questions[MAX_QUESTIONS_PER_ROOM];
+                loaded = db_get_all_questions(db_temp_questions, numQ);
+                
+                for (int i = 0; i < loaded; i++) {
+                    temp_questions[i].id = db_temp_questions[i].id;
+                    strcpy(temp_questions[i].text, db_temp_questions[i].text);
+                    strcpy(temp_questions[i].A, db_temp_questions[i].option_a);
+                    strcpy(temp_questions[i].B, db_temp_questions[i].option_b);
+                    strcpy(temp_questions[i].C, db_temp_questions[i].option_c);
+                    strcpy(temp_questions[i].D, db_temp_questions[i].option_d);
+                    temp_questions[i].correct = db_temp_questions[i].correct_option;
+                    strcpy(temp_questions[i].topic, db_temp_questions[i].topic);
+                    strcpy(temp_questions[i].difficulty, db_temp_questions[i].difficulty);
+                }
+            }
+            
+            if (loaded == 0) {
+                send_msg(cli->sock, "FAIL No questions match your criteria");
+            } else {
+                // Create room in database
+                int room_id = db_create_room(name, cli->user_id, dur);
+                if (room_id <= 0) {
+                    send_msg(cli->sock, "FAIL Could not create room in database");
+                } else {
+                    // Add questions to room
+                    for (int i = 0; i < loaded; i++) {
+                        db_add_question_to_room(room_id, temp_questions[i].id, i);
+                    }
+                    
+                    // Add to in-memory array
+                    Room *r = &rooms[roomCount];
+                    r->db_id = room_id;
+                    strcpy(r->name, name);
+                    strcpy(r->owner, cli->username);
+                    r->numQuestions = loaded;
+                    r->duration = dur;
+                    r->started = 0;
+                    r->start_time = time(NULL);
+                    r->participantCount = 0;
+                    
+                    for (int i = 0; i < loaded; i++) {
+                        r->questions[i] = temp_questions[i];
+                    }
+                    
+                    roomCount++;
+                    
+                    char log_msg[512];
+                    sprintf(log_msg, "Admin %s created room %s with %d questions", cli->username, name, loaded);
+                    writeLog(log_msg);
+                    
+                    send_msg(cli->sock, "SUCCESS Room created");
                 }
             }
         }
-        pthread_mutex_unlock(&lock);
+    }
+}
+
+// DATABASE: Create room
+int db_create_room(const char *name, int owner_id, int duration_minutes) {
+    if (!name || !db) return -1;
+    
+    sqlite3_stmt *stmt;
+    const char *query = 
+        "INSERT INTO rooms (name, owner_id, duration_minutes, is_started, is_finished) "
+        "VALUES (?, ?, ?, 0, 0)";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Error preparing query: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    
+    sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 2, owner_id);
+    sqlite3_bind_int(stmt, 3, duration_minutes);
+    
+    int result = -1;
+    if (sqlite3_step(stmt) == SQLITE_DONE) {
+        result = (int)sqlite3_last_insert_rowid(db);
+    }
+    
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+// DATABASE: Add question to room
+int db_add_question_to_room(int room_id, int question_id, int order_num) {
+    if (!db) return 0;
+    
+    sqlite3_stmt *stmt;
+    const char *query = 
+        "INSERT INTO room_questions (room_id, question_id, order_num) "
+        "VALUES (?, ?, ?)";
+    
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Error preparing query: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+    
+    sqlite3_bind_int(stmt, 1, room_id);
+    sqlite3_bind_int(stmt, 2, question_id);
+    sqlite3_bind_int(stmt, 3, order_num);
+    
+    int result = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+// CLIENT: Create room interactive workflow
+void handle_create_room() {
+    if (!loggedIn || strcmp(currentRole, "admin") != 0) {
+        printf("Only admin can create rooms.\n");
+        return;
+    }
+    
+    char room[100];
+    int total_num, dur;
+    
+    printf("Room name: ");
+    fgets(room, sizeof(room), stdin);
+    trim_input_newline(room);
+    printf("Total number of questions: ");
+    scanf("%d", &total_num);
+    clear_stdin();
+    printf("Duration (seconds): ");
+    scanf("%d", &dur);
+    clear_stdin();
+    
+    // Get topic counts from server
+    char buffer[BUFFER_SIZE];
+    send_message("GET_TOPICS");
+    recv_message(buffer, sizeof(buffer));
+    
+    // ... (topic and difficulty selection UI omitted for brevity) ...
+    
+    char cmd[1024];
+    if (strlen(topic_selection) == 0 && strlen(difficulty_selection) == 0) {
+        snprintf(cmd, sizeof(cmd), "CREATE %s %d %d", room, total_num, dur);
+    } else {
+        snprintf(cmd, sizeof(cmd), "CREATE %s %d %d TOPICS %s DIFFICULTIES %s", 
+                 room, total_num, dur, topic_selection, difficulty_selection);
+    }
+    
+    send_message(cmd);
+    recv_message(buffer, sizeof(buffer));
+    if (strncmp(buffer, "SUCCESS", 7) == 0) {
+        printf("\nRoom created successfully!\n");
+    } else {
+        printf("\nError: %s\n", buffer);
     }
 }
 ```
 
-**Value:** Prevents test hangs and ensures all submissions are recorded.
+**Explanation:**
 
-### Advanced Feature 4: Attempt History Tracking (0.5 points)
+#### (1) Workflow Explanation
 
-**Implementation:**
-- Stores up to 10 previous attempt scores
-- Shows progression: "Att1:6/10 Att2:7/10 Latest:8/10"
-- Leaderboard uses average of all attempts
+Room creation involves multi-step interaction and complex question selection logic. The admin client initiates by entering room name, question count, and duration. The client then requests available topics via `GET_TOPICS`, displays them interactively, and prompts the admin to specify topic distribution (e.g., "database:5 oop:5"). Similarly, the client requests available difficulties and prompts for distribution (e.g., "easy:3 medium:4 hard:3"). The client constructs a `CREATE roomname numQ duration TOPICS ... DIFFICULTIES ...` command and sends it to the server. The server parses this multi-part command using three conditional paths: (1) If both topic and difficulty filters are specified, it extracts topic IDs and difficulty counts, then invokes `db_get_random_filtered_questions()` separately for each difficulty level, ensuring the specified distribution. (2) If only topics are specified, it calls `db_get_questions_with_distribution()` with difficulty filter "#" (wildcard), returning random questions from selected topics regardless of difficulty. (3) If neither filter is specified, it retrieves random questions from the entire database. All loaded questions are inserted into the `room_questions` table with order preservation, and the room record is created in the `rooms` table. Both in-memory (`rooms[]`) and persistent (database) state are updated simultaneously.
 
-```c
-// server.c - Participant Structure
-typedef struct {
-    char username[64];
-    int score;
-    int score_history[MAX_ATTEMPTS];  // Previous 10 scores
-    int history_count;
-    // ...
-} Participant;
+#### (2) Network Knowledge Explanation
 
-// Re-join logic (Lines 347-362)
-if (p->score != -1) {  // Already submitted
-    if (p->history_count < MAX_ATTEMPTS) {
-        p->score_history[p->history_count++] = p->score;
-    }
-    p->score = -1;  // Reset for new attempt
-}
-```
-
-**Value:** Allows students to retake tests and track improvement.
-
-### Advanced Feature 5: Role-Based Admin Secret Code (0.5 points)
-
-**Implementation:**
-- Admin registration requires secret code: `network_programming`
-- Prevents unauthorized privilege escalation
-- Server-side enforcement
-
-```c
-// server.c - Lines 202-208 (Admin Validation)
-if (strcasecmp(role, "admin") == 0) {
-    if (strcmp(code, ADMIN_CODE) != 0) authorized = 0;
-}
-if (!authorized) {
-    send_msg(cli->sock, "FAIL Invalid Admin Secret Code!");
-}
-```
-
-**Value:** Security mechanism prevents student privilege escalation.
-
-**Total Advanced Features Score:** 3 points (All major enhancements present)
+Room creation demonstrates complex data exchange across a request-response protocol. The command includes multiple optional sections (TOPICS and DIFFICULTIES keywords with variable arguments), requiring careful parsing to extract filters. The implementation uses substring search (`strstr()`) to locate keyword boundaries, then extracts the text between markers. This approach is more flexible than fixed-position sscanf but vulnerable to edge cases (e.g., topic names containing "DIFFICULTIES"). The question distribution algorithm showcases algorithmic complexity—the server must simultaneously satisfy multiple constraints: topic membership, difficulty level, and exact count matching. SQLite's `ORDER BY RANDOM() LIMIT N` provides O(N) random sampling from potentially large result sets. The hybrid storage strategy (in-memory `rooms[]` array plus database persistence) leverages TCP's connection-specific state for fast lookups during test execution, while the database serves as the authoritative archive for durability across server restarts.
 
 **Score Justification:**
-- Database migration & normalization: Production-ready persistence
-- Concurrent client handling: Scalability to multiple simultaneous tests
-- Auto-submit timeout: System reliability
-- Attempt history: Enhanced learning functionality
-- Admin secret code: Security enforcement
 
-Collectively, these features demonstrate enterprise-grade system design beyond basic requirements. **3 points fully warranted.**
+✓ Complete room creation workflow with multi-part command parsing  
+✓ Three-path question selection: (1) topic+difficulty, (2) topic-only, (3) no filters  
+✓ Distributed question loading: random selection by difficulty level  
+✓ Database persistence: room record + room_questions association table  
+✓ In-memory caching: rooms[] array for fast lookups during test  
+✓ Ownership tracking: room.owner_id links to admin creator  
+✓ Validation: room name uniqueness, question count limits, duration bounds  
+✓ Audit logging: room creation events recorded  
 
----
-
-## Summary Table
-
-| Benchmark | Status | Points | Justification |
-|-----------|--------|--------|---------------|
-| 1. Stream Handling | ✅ Full | 1 | TCP socket I/O with proper buffering |
-| 2. Server Socket I/O | ✅ Full | 2 | Complete lifecycle + threading |
-| 3. Registration & Management | ✅ Full | 2 | Credential storage, validation, role assignment |
-| 4. Login & Session Management | ✅ Full | 2 | Authentication + per-client state |
-| 5. Access Control | ✅ Full | 1 | Role-based command enforcement |
-| 6. Practice Mode | ✅ Full | 1 | Random questions, instant feedback |
-| 7. Test Room Creation | ✅ Full | 2 | Room lifecycle, filtering, persistence |
-| 8. View Test Rooms | ✅ Full | 1 | List all rooms with metadata |
-| 9. Join Test Rooms | ✅ Full | 2 | Validation, state sync, multi-attempt |
-| 10. Start Test | ✅ Full | 1 | Server-side timer, coordination |
-| 11. Change Answers | ✅ Full | 1 | In-memory updates, state consistency |
-| 12. Submit & Score | ✅ Full | 2 | Correct scoring algorithm, persistence |
-| 13. View Results | ✅ Full | 1 | Per-room results with history |
-| 14. Activity Logging | ✅ Full | 1 | Timestamped audit trail |
-| 15. Question Classification | ✅ Full | 2 | Topics + difficulties with filtering |
-| 16. Test Storage & Statistics | ✅ Full | 2 | SQLite + aggregation + leaderboard |
-| 17. GUI | ⚠️ Partial | 1.5 | CLI with menus (not graphical toolkit) |
-| 18. Advanced Features | ✅ Full | 3 | Database, concurrency, timeout, history, security |
-| | | **TOTAL** | **29.5 / 30** |
+**Award: 2/2 points**
 
 ---
 
-## Final Assessment
+## 8. Viewing the List of Test Rooms (1 point)
 
-**Fully Implemented Benchmarks:** 17/18  
-**Partially Implemented:** 1 (GUI: text-based CLI instead of graphical)  
-**Score Achieved:** ~29.5 out of 30 points  
+**Status:** Fully Implemented
 
-**Key Strengths:**
-- Production-ready socket programming with proper concurrency
-- Complete test lifecycle from creation to scoring
-- Robust data persistence with SQLite + text fallback
-- Advanced features (auto-submit, attempt history, role security)
-- Complete protocol specification and implementation
+**Code Evidence:**
+- File: `server.c` (lines 577–595)
+- File: `client.c` (lines 414–420)
+- Functions: `handle_client()` (LIST), `handle_list_rooms()`
 
-**Minor Gap:**
-- GUI is CLI-based (not graphical toolkit), limiting to 1.5/3 points instead of 3/3
+```c
+// SERVER: LIST command handler
+else if (strcmp(cmd, "LIST") == 0) {
+    char msg[BUF_SIZE] = "SUCCESS Rooms:\n";
+    for (int i = 0; i < roomCount; i++) {
+        Room *r = &rooms[i];
+        char line[512];
+        snprintf(line, sizeof(line), 
+                 "- %s (Owner: %s, Questions: %d, Duration: %d secs)\n",
+                 r->name, r->owner, r->numQuestions, r->duration);
+        strcat(msg, line);
+    }
+    if (roomCount == 0) {
+        strcpy(msg, "SUCCESS No rooms available");
+    }
+    send_msg(cli->sock, msg);
+}
 
-**Overall:** Enterprise-grade online testing system demonstrating mastery of network programming, database design, multi-threaded concurrency, and data consistency patterns.
+// CLIENT: Display room list
+void handle_list_rooms() {
+    send_message("LIST");
+    char buffer[BUFFER_SIZE];
+    recv_message(buffer, sizeof(buffer));
+    printf("\n====== AVAILABLE ROOMS ======\n");
+    printf("%s", strncmp(buffer, "SUCCESS", 7) == 0 ? buffer + 8 : buffer);
+    printf("=============================\n");
+}
+```
 
-**Recent Enhancements:** Dual-source data synchronization with automatic topic creation, user-tracking for audit logs, and startup consistency verification via db_sync_questions_from_file().
+**Explanation:**
+
+#### (1) Workflow Explanation
+
+Room listing is a simple query operation. The client sends `LIST` command with no arguments. The server iterates through the in-memory `rooms[]` array (populated during startup via `load_rooms()` and updated incrementally on room creation), formatting each room's metadata into a human-readable string: name, owner username, question count, and duration in seconds. The formatted list is prefixed with `SUCCESS` and transmitted via `send_msg()`. The client receives the response, strips the `SUCCESS` prefix, and displays the room information. The operation is read-only; no database updates or state modifications occur.
+
+#### (2) Network Knowledge Explanation
+
+The LIST operation exemplifies a simple query–response pattern in a stateless protocol design. The in-memory `rooms[]` array provides O(1) access and fast iteration without database round-trips. This design trades memory usage for responsiveness—all active room metadata resides in the server's process memory. Scaling to thousands of concurrent rooms would require indexing (e.g., hash table or B-tree) rather than linear iteration. The response format uses newline-terminated lines within a single message body, leveraging TCP's stream nature to batch multiple logical records into one network datagram. This reduces system call overhead compared to transmitting each room in a separate message.
+
+**Score Justification:**
+
+✓ Complete LIST command implementation  
+✓ Iterates in-memory rooms[] array, fast O(N) operation  
+✓ Formatted output includes all relevant metadata (name, owner, questions, duration)  
+✓ Handles empty room list gracefully ("No rooms available")  
+✓ Client displays formatted output to user  
+✓ No database queries needed; in-memory state sufficient  
+
+**Award: 1/1 point**
+
+---
+
+## Summary
+
+| Requirement | Status | Points |
+|------------|--------|--------|
+| 1. Stream Handling | Fully Implemented | 1/1 |
+| 2. Socket I/O Mechanism (Server) | Fully Implemented | 2/2 |
+| 3. Account Registration & Management | Fully Implemented | 2/2 |
+| 4. Login & Session Management | Fully Implemented | 2/2 |
+| 5. Access Control Management | Fully Implemented | 1/1 |
+| 6. Participating in Practice Mode | Fully Implemented | 1/1 |
+| 7. Creating Test Rooms | Fully Implemented | 2/2 |
+| 8. Viewing List of Test Rooms | Fully Implemented | 1/1 |
+| **Total (Requirements 1–8)** | **Fully Implemented** | **13/13** |
+
+---
+
+## Technical Observations
+
+### Strengths
+
+1. **Robust Concurrency Model:** Thread-per-connection architecture cleanly handles multiple simultaneous clients without complex event loop programming.
+
+2. **Database Integration:** SQLite3 backend provides ACID guarantees, prepared statement query parameterization prevents SQL injection, and persistent storage survives server restarts.
+
+3. **Protocol Design:** Text-based, newline-delimited protocol is simple, debuggable, and aligns with classic network programming pedagogical examples.
+
+4. **Hybrid State Management:** In-memory arrays cache active sessions for performance; database persists authoritative data for durability.
+
+5. **Access Control:** Dual-layer enforcement (server-side + client-side UI adaptation) prevents unauthorized access without trusting client implementations.
+
+### Areas for Enhancement
+
+1. **Security:** Plain-text password storage violates best practices. Recommend bcrypt/scrypt hashing and salting.
+
+2. **Scalability:** Linear iteration over rooms[] scales poorly with thousands of rooms. Consider hash tables or database indexing.
+
+3. **Protocol Robustness:** Fixed-size buffers (8192 bytes) may overflow with very large test rooms. Implement variable-length message framing (e.g., length-prefixed protocol).
+
+4. **Error Handling:** Some error conditions (database connection loss, malloc failure) lack graceful recovery, potentially crashing the server.
+
+5. **Testing:** No unit tests or integration tests visible; recommend automated test suite to ensure correctness of protocol and database operations.
+
+---
+
+**Report Generated:** January 8, 2026  
+**Evaluation Standard:** Network Programming Course Rubric  
+**Total Achievable Points (Requirements 1–8):** 13/13 points

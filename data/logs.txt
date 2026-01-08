@@ -561,3 +561,30 @@
 2026-01-01 23:36:21 - SERVER_STARTED
 2026-01-01 23:36:30 - User 20235956 logged in as admin
 2026-01-01 23:36:49 - User 20235956 logged in as admin
+2026-01-07 20:52:41 - SERVER_STARTED
+2026-01-07 20:54:32 - Register failed for admin tuan (Wrong Code)
+2026-01-07 20:54:47 - User tuan registered as admin in database
+2026-01-07 20:54:53 - User tuan logged in as admin
+2026-01-07 20:55:36 - User student1 registered as student in database
+2026-01-07 20:55:43 - User student1 logged in as student
+2026-01-07 20:56:14 - User student2 registered as student in database
+2026-01-07 20:56:19 - User student2 logged in as student
+2026-01-07 20:57:09 - Admin tuan created room room1 with 10 questions
+2026-01-07 20:57:41 - User tuan submitted answers in room room1: 1/10
+2026-01-07 20:57:58 - User tuan viewed leaderboard for room room1
+2026-01-07 20:58:44 - Admin tuan added question ID 51 to database: tuan/easy
+2026-01-07 20:59:35 - Admin tuan deleted question ID 45 (What is normalization in databases?)
+2026-01-07 20:59:53 - Admin tuan added question ID 52 to database: tuan/easy
+2026-01-07 21:00:40 - User student1 submitted answers in room room1: 3/10
+2026-01-07 21:01:04 - User student2 submitted answers in room room1: 4/10
+2026-01-07 21:03:02 - User student2 viewed leaderboard for room room1
+2026-01-07 22:33:59 - User tuan logged in as admin
+2026-01-07 22:35:11 - Admin tuan created room room2 with 10 questions
+2026-01-07 22:35:53 - User tuan submitted answers in room room1: 1/10
+2026-01-07 22:36:29 - User student2 submitted answers in room room1: 1/10
+2026-01-08 09:42:14 - SERVER_STARTED
+2026-01-08 09:42:53 - User tuan logged in as admin
+2026-01-08 09:43:11 - Admin tuan created room room4 with 5 questions
+2026-01-08 09:43:28 - Admin tuan deleted room room1
+2026-01-08 09:44:09 - User tuan logged in as admin
+2026-01-08 09:44:19 - User tuan viewed leaderboard for room room2

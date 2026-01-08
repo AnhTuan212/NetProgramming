@@ -151,36 +151,6 @@ int shuffle_questions(QItem *questions, int count) {
 }
 
 // ===== MAIN LOADING FUNCTION =====
-
-int loadQuestionsTxt(const char *filename, QItem *questions, int maxQ,
-                     const char *topic, const char *diff) {
-    // Note: filename parameter ignored - we now use database as single source of truth
-    if (!questions || maxQ <= 0) return 0;
-
-    DBQuestion db_questions[maxQ];
-    int count = db_get_questions_with_distribution(topic, diff, db_questions, maxQ);
-    
-    if (count <= 0) return 0;
-
-    // Convert DBQuestion to QItem format
-    for (int i = 0; i < count; i++) {
-        questions[i].id = db_questions[i].id;
-        strncpy(questions[i].text, db_questions[i].text, sizeof(questions[i].text)-1);
-        strncpy(questions[i].A, db_questions[i].option_a, sizeof(questions[i].A)-1);
-        strncpy(questions[i].B, db_questions[i].option_b, sizeof(questions[i].B)-1);
-        strncpy(questions[i].C, db_questions[i].option_c, sizeof(questions[i].C)-1);
-        strncpy(questions[i].D, db_questions[i].option_d, sizeof(questions[i].D)-1);
-        questions[i].correct = db_questions[i].correct_option;
-        strncpy(questions[i].topic, db_questions[i].topic, sizeof(questions[i].topic)-1);
-        strncpy(questions[i].difficulty, db_questions[i].difficulty, sizeof(questions[i].difficulty)-1);
-    }
-
-    // Randomize question order
-    shuffle_questions(questions, count);
-
-    return count;
-}
-
 // Load questions with topic and difficulty distribution filters
 // topic_filter format: "topic1:count1 topic2:count2 ..."
 // diff_filter format: "difficulty1:count1 difficulty2:count2 ..."

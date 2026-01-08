@@ -8,7 +8,6 @@
 #include <sqlite3.h>
 #include "db_init.h"
 #include "db_queries.h"
-#include "db_migration.h"
 
 #define MAX_QUESTIONS_PER_ROOM 50
 #define DB_PATH "test_system.db"
@@ -25,10 +24,6 @@ typedef struct {
     char topic[64];
     char difficulty[32];
 } QItem;
-
-// Main question loading function
-int loadQuestionsTxt(const char *filename, QItem *questions, int maxQ,
-                     const char *topic, const char *diff);
 
 // Load questions with topic and difficulty distribution filters
 int loadQuestionsWithFilters(const char *filename, QItem *questions, int maxQ,
@@ -64,8 +59,5 @@ int validate_user(const char *username, const char *password, char *role_out);
 int register_user_with_role(const char *username, const char *password, const char *role);
 int db_get_user_id(const char *username);  // 🔧 Get user ID from database
 int db_sync_questions_from_file(const char *filename);  // 🔧 Sync file questions to database
-
-// Leaderboard
-void show_leaderboard(const char *output_file);
 
 #endif  // COMMON_H
