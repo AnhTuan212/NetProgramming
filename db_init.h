@@ -29,4 +29,7 @@ int db_init_default_difficulties(void);
 // Database health check
 int db_health_check(void);
 
+// Load and execute SQL file
+int load_sql_file(const char *sql_file_path);
+
 #endif // DB_INIT_H

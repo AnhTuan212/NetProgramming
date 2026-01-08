@@ -239,3 +239,58 @@ int db_health_check(void) {
     // We should have at least 8 tables
     return table_count >= 8;
 }
+
+// Load and execute SQL file
+int load_sql_file(const char *sql_file_path) {
+    FILE *f = fopen(sql_file_path, "r");
+    if (!f) {
+        fprintf(stderr, "Error opening SQL file: %s\n", sql_file_path);
+        return 0;
+    }
+    
+    // Read entire file into buffer
+    char *sql_buffer = NULL;
+    size_t buffer_size = 0;
+    size_t buffer_capacity = 4096;
+    
+    sql_buffer = malloc(buffer_capacity);
+    if (!sql_buffer) {
+        fprintf(stderr, "Memory allocation failed\n");
+        fclose(f);
+        return 0;
+    }
+    
+    int c;
+    while ((c = fgetc(f)) != EOF) {
+        if (buffer_size >= buffer_capacity - 1) {
+            buffer_capacity *= 2;
+            char *new_buffer = realloc(sql_buffer, buffer_capacity);
+            if (!new_buffer) {
+                fprintf(stderr, "Memory reallocation failed\n");
+                free(sql_buffer);
+                fclose(f);
+                return 0;
+            }
+            sql_buffer = new_buffer;
+        }
+        sql_buffer[buffer_size++] = c;
+    }
+    fclose(f);
+    
+    sql_buffer[buffer_size] = '\0';
+    
+    // Execute SQL statements
+    char *errmsg = NULL;
+    int rc = sqlite3_exec(db, sql_buffer, NULL, NULL, &errmsg);
+    
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s\n", errmsg);
+        sqlite3_free(errmsg);
+        free(sql_buffer);
+        return 0;
+    }
+    
+    free(sql_buffer);
+    printf("✓ Loaded SQL file: %s\n", sql_file_path);
+    return 1;
+}

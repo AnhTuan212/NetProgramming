@@ -8,7 +8,6 @@
 #include <sqlite3.h>
 #include "db_init.h"
 #include "db_queries.h"
-#include "db_migration.h"
 
 #define MAX_QUESTIONS_PER_ROOM 50
 #define DB_PATH "test_system.db"
