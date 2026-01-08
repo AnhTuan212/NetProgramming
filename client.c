@@ -11,6 +11,7 @@
 #define SERVER_PORT 9000
 #define BUFFER_SIZE 8192
 
+// reset khi đóng chương trình or ngắt kết nối (flags)
 int sockfd;
 char currentUser[100] = "";
 char currentRole[32] = "";
@@ -49,7 +50,7 @@ void to_lowercase_client(char *str) {
 }
 
 void print_banner() {
-    system("clear");
+    system("clear"); //xóa all nội dung terminal
     printf("====== ONLINE TEST CLIENT ======\n");
     if (loggedIn) {
         printf("Logged in as: %s (%s)\n", currentUser, currentRole);
@@ -132,6 +133,7 @@ void handle_login() {
         loggedIn = 1;
         strcpy(currentUser, user);
         sscanf(buffer, "SUCCESS %31s", currentRole);
+        // Đọc chuỗi từ buffer, tìm "SUCCESS " rồi lưu 31 ký tự tiếp theo vào currentRole
     }
 }
 
@@ -475,7 +477,6 @@ void handle_delete_room() {
     printf("%s\n", buffer);
 }
 
-// --- HÀM SỬA LOGIC HIỂN THỊ CÂU HỎI ---
 void handle_start_test(int totalQ, int duration) {
     if (totalQ == 0) { printf("No questions.\n"); return; }
 
@@ -486,7 +487,6 @@ void handle_start_test(int totalQ, int duration) {
     char **questions = malloc(sizeof(char*) * totalQ);
     for(int i=0; i<totalQ; i++) questions[i] = malloc(BUFFER_SIZE);
 
-    // Tải sơ bộ câu hỏi (lần đầu)
     char cmd[256], buffer[BUFFER_SIZE];
     for (int i = 0; i < totalQ; i++) {
         snprintf(cmd, sizeof(cmd), "GET_QUESTION %s %d", currentRoom, i);
@@ -510,7 +510,7 @@ void handle_start_test(int totalQ, int duration) {
             sleep(2);
             break;
         }
-        // In danh sách câu hỏi
+        // Trỏ ra sau ques, trước \n
         for (int i = 0; i < totalQ; i++) {
             char q_line[300];
             char *start = questions[i];
@@ -577,6 +577,7 @@ void handle_start_test(int totalQ, int duration) {
     free(questions);
     strcpy(currentRoom, "");
     inTest = 0;
+    // lưu trong struct server, submit thì mới lưu trong dtb
 }
 
 void handle_view_results() {

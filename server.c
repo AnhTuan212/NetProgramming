@@ -428,7 +428,8 @@ void* handle_client(void *arg) {
                             
                             loaded = q_idx;
                             
-                            // Convert DBQuestion to QItem
+                            // Convert DBQuestion to 
+                            
                             for (int i = 0; i < loaded; i++) {
                                 temp_questions[i].id = db_temp_questions[i].id;
                                 strcpy(temp_questions[i].text, db_temp_questions[i].text);
