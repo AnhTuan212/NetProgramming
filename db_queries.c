@@ -787,7 +787,7 @@ int db_get_all_topics(char *output) {
         int topic_count = sqlite3_column_int(stmt, 1);
         
         if (count > 0) strcat(output, "|");
-        sprintf(output + strlen(output), "%s:%d", topic, topic_count);
+        snprintf(output + strlen(output), 8192 - strlen(output), "%s:%d", topic, topic_count);
         count++;
     }
     
@@ -890,7 +890,7 @@ int db_get_all_difficulties(char *output) {
         int diff_count = sqlite3_column_int(stmt, 1);
         
         if (count > 0) strcat(output, "|");
-        sprintf(output + strlen(output), "%s:%d", difficulty, diff_count);
+        snprintf(output + strlen(output), 8192 - strlen(output), "%s:%d", difficulty, diff_count);
         count++;
     }
     

@@ -6,7 +6,6 @@ LDFLAGS  := -pthread -lsqlite3
 # --- Sources ---
 SERVER_SRCS := server.c user_manager.c question_bank.c logger.c db_init.c db_queries.c
 CLIENT_SRCS := client.c
-STATS_OBJ   := stats.o
 
 SERVER_OBJS := $(SERVER_SRCS:.c=.o)
 CLIENT_OBJS := $(CLIENT_SRCS:.c=.o)
@@ -14,7 +13,7 @@ CLIENT_OBJS := $(CLIENT_SRCS:.c=.o)
 # --- Targets ---
 all: server client
 
-server: $(SERVER_OBJS) $(STATS_OBJ)
+server: $(SERVER_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 client: $(CLIENT_OBJS)

@@ -222,7 +222,7 @@ void* monitor_exam_thread(void *arg) {
                         db_add_result(p->db_id, r->db_id, p->score, r->numQuestions, p->score);
                         
                         char log_msg[256];
-                        sprintf(log_msg, "User %s auto-submitted in room %s: %d/%d", 
+                        snprintf(log_msg, sizeof(log_msg), "User %s auto-submitted in room %s: %d/%d", 
                                 p->username, r->name, p->score, r->numQuestions);
                         writeLog(log_msg);
                     }
@@ -262,14 +262,14 @@ void* handle_client(void *arg) {
                 }
                 if (!authorized) {
                     send_msg(cli->sock, "FAIL Invalid Admin Secret Code!");
-                    sprintf(log_msg, "Register failed for admin %s (Wrong Code)", user);
+                    snprintf(log_msg, sizeof(log_msg), "Register failed for admin %s (Wrong Code)", user);
                     writeLog(log_msg);
                 } else {
                     // 🔧 FIX: Use database directly instead of register_user_with_role
                     int user_id = db_add_user(user, pass, role);
                     if (user_id > 0) {
                         send_msg(cli->sock, "SUCCESS Registered. Please login.\n");
-                        sprintf(log_msg, "User %s registered as %s in database", user, role);
+                        snprintf(log_msg, sizeof(log_msg), "User %s registered as %s in database", user, role);
                         writeLog(log_msg);
                     } else if (user_id == 0) {
                         send_msg(cli->sock, "FAIL User already exists\n");
@@ -291,15 +291,15 @@ void* handle_client(void *arg) {
                 cli->user_id = user_id;
                 cli->loggedIn = 1;
                 
-                sprintf(log_msg, "User %s logged in as %s", user, role);
+                snprintf(log_msg, sizeof(log_msg), "User %s logged in as %s", user, role);
                 writeLog(log_msg);
                 
                 char msg[128];
-                sprintf(msg, "SUCCESS %s", role);
+                snprintf(msg, sizeof(msg), "SUCCESS %s", role);
                 send_msg(cli->sock, msg);
             } else {
                 send_msg(cli->sock, "FAIL Invalid credentials");
-                sprintf(log_msg, "Login failed for user %s", user);
+                snprintf(log_msg, sizeof(log_msg), "Login failed for user %s", user);
                 writeLog(log_msg);
             }
         }
@@ -517,7 +517,7 @@ void* handle_client(void *arg) {
                             memcpy(r->questions, temp_questions, loaded * sizeof(QItem));
                             
                             char log_msg[256];
-                            sprintf(log_msg, "Admin %s created room %s with %d questions", cli->username, name, loaded);
+                            snprintf(log_msg, sizeof(log_msg), "Admin %s created room %s with %d questions", cli->username, name, loaded);
                             writeLog(log_msg);
                             db_add_log(cli->user_id, "CREATE_ROOM", log_msg);
                             
@@ -532,7 +532,7 @@ void* handle_client(void *arg) {
             if (roomCount == 0) strcat(msg, "No rooms.\n");
             for (int i = 0; i < roomCount; i++) {
                 char line[256];
-                sprintf(line, "- %s (Owner: %s, Q: %d, Time: %ds)\n",
+                snprintf(line, sizeof(line), "- %s (Owner: %s, Q: %d, Time: %ds)\n",
                         rooms[i].name, rooms[i].owner, rooms[i].numQuestions, rooms[i].duration);
                 strcat(msg, line);
             }
@@ -573,7 +573,7 @@ void* handle_client(void *arg) {
                 if (remaining < 0) remaining = 0;
 
                 char msg[128];
-                sprintf(msg, "SUCCESS Joined %d %d", r->numQuestions, remaining);
+                snprintf(msg, sizeof(msg), "SUCCESS Joined %d %d", r->numQuestions, remaining);
                 send_msg(cli->sock, msg);
             }
         }
@@ -680,13 +680,13 @@ void* handle_client(void *arg) {
                     db_add_result(p->db_id, r->db_id, score, r->numQuestions, score);
                     
                     char log_msg[256];
-                    sprintf(log_msg, "User %s submitted answers in room %s: %d/%d", 
+                    snprintf(log_msg, sizeof(log_msg), "User %s submitted answers in room %s: %d/%d", 
                             cli->username, name, score, r->numQuestions);
                     writeLog(log_msg);
                     db_add_log(cli->user_id, "SUBMIT_ROOM", log_msg);
                     
                     char msg[128];
-                    sprintf(msg, "SUCCESS Score: %d/%d", score, r->numQuestions);
+                    snprintf(msg, sizeof(msg), "SUCCESS Score: %d/%d", score, r->numQuestions);
                     send_msg(cli->sock, msg);
                 }
             }
@@ -704,17 +704,17 @@ void* handle_client(void *arg) {
                     char historyStr[256] = "";
                     for(int k=0; k < p->history_count; k++) {
                         char tmp[32];
-                        sprintf(tmp, "Att%d:%d/%d ", k+1, p->score_history[k], r->numQuestions);
+                        snprintf(tmp, sizeof(tmp), "Att%d:%d/%d ", k+1, p->score_history[k], r->numQuestions);
                         strcat(historyStr, tmp);
                     }
                     if (p->score != -1) {
                          char tmp[64];
-                         sprintf(tmp, "Latest:%d/%d", p->score, r->numQuestions);
+                         snprintf(tmp, sizeof(tmp), "Latest:%d/%d", p->score, r->numQuestions);
                          strcat(historyStr, tmp);
                     } else {
                          strcat(historyStr, "Doing...");
                     }
-                    sprintf(line, "- %s | %s\n", p->username, historyStr);
+                    snprintf(line, sizeof(line), "- %s | %s\n", p->username, historyStr);
                     strcat(msg, line);
                 }
                 send_msg(cli->sock, msg);
@@ -755,7 +755,7 @@ void* handle_client(void *arg) {
                 roomCount--;
                 
                 char log_msg[256];
-                sprintf(log_msg, "Admin %s deleted room %s", cli->username, name);
+                snprintf(log_msg, sizeof(log_msg), "Admin %s deleted room %s", cli->username, name);
                 writeLog(log_msg);
                 
                 send_msg(cli->sock, "SUCCESS Room deleted");
@@ -788,7 +788,7 @@ void* handle_client(void *arg) {
                     send_msg(cli->sock, output);
                     
                     char log_msg[256];
-                    sprintf(log_msg, "User %s viewed leaderboard for room %s", cli->username, room_name);
+                    snprintf(log_msg, sizeof(log_msg), "User %s viewed leaderboard for room %s", cli->username, room_name);
                     writeLog(log_msg);
                 }
             }
@@ -935,16 +935,16 @@ void* handle_client(void *arg) {
                     if (new_id > 0) {
                         // Success - question added to database
                         char log_msg[512];
-                        sprintf(log_msg, "Admin %s added question ID %d to database: %s/%s", 
+                        snprintf(log_msg, sizeof(log_msg), "Admin %s added question ID %d to database: %s/%s", 
                                 cli->username, new_id, topic, difficulty);
                         writeLog(log_msg);
                         
                         char msg[256];
-                        sprintf(msg, "SUCCESS Question added with ID %d", new_id);
+                        snprintf(msg, sizeof(msg), "SUCCESS Question added with ID %d", new_id);
                         send_msg(cli->sock, msg);
                     } else {
                         char msg[256];
-                        sprintf(msg, "FAIL Could not add question to database");
+                        snprintf(msg, sizeof(msg), "FAIL Could not add question to database");
                         send_msg(cli->sock, msg);
                     }
                 }
@@ -961,7 +961,7 @@ void* handle_client(void *arg) {
                 int id = atoi(search_value);
                 QItem q;
                 if (search_questions_by_id(id, &q)) {
-                    sprintf(result + strlen(result), "%d|%s|%s|%s|%s|%s|%c|%s|%s",
+                    snprintf(result + strlen(result), sizeof(result) - strlen(result), "%d|%s|%s|%s|%s|%s|%c|%s|%s",
                             q.id, q.text, q.A, q.B, q.C, q.D, q.correct, q.topic, q.difficulty);
                     count = 1;
                 } else {
@@ -1007,12 +1007,12 @@ void* handle_client(void *arg) {
                     // Gaps in IDs are normal and don't cause issues
                     
                     char msg[256];
-                    sprintf(msg, "SUCCESS Question ID %d deleted", question_id);
+                    snprintf(msg, sizeof(msg), "SUCCESS Question ID %d deleted", question_id);
                     send_msg(cli->sock, msg);
                     
                     // Log
                     char log_msg[512];
-                    sprintf(log_msg, "Admin %s deleted question ID %d (%s)", cli->username, question_id, q.text);
+                    snprintf(log_msg, sizeof(log_msg), "Admin %s deleted question ID %d (%s)", cli->username, question_id, q.text);
                     writeLog(log_msg);
                 } else {
                     send_msg(cli->sock, "FAIL Could not delete question");

@@ -64,7 +64,4 @@ int register_user_with_role(const char *username, const char *password, const ch
 int db_get_user_id(const char *username);  // 🔧 Get user ID from database
 int db_sync_questions_from_file(const char *filename);  // 🔧 Sync file questions to database
 
-// Leaderboard
-void show_leaderboard(const char *output_file);
-
 #endif  // COMMON_H

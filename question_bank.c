@@ -151,7 +151,11 @@ int shuffle_questions(QItem *questions, int count) {
 }
 
 // ===== MAIN LOADING FUNCTION =====
+// NOTE: These functions are kept for backward compatibility but are now UNUSED
+// Modern version uses database directly via db_get_questions_with_distribution()
+// They are commented out to avoid compilation warnings about unused parameters
 
+/*
 int loadQuestionsTxt(const char *filename, QItem *questions, int maxQ,
                      const char *topic, const char *diff) {
     // Note: filename parameter ignored - we now use database as single source of truth
@@ -214,6 +218,7 @@ int loadQuestionsWithFilters(const char *filename, QItem *questions, int maxQ,
 
     return count;
 }
+*/
 
 // Search questions by ID
 int search_questions_by_id(int id, QItem *result) {
